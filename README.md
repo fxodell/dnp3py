@@ -8,8 +8,9 @@ This driver implements the DNP3 protocol stack to communicate with DNP3 outstati
 
 ## Features
 
-- **Full Protocol Stack**: Implements Data Link, Transport, and Application layers
+- **Full Protocol Stack**: Implements Data Link, Transport, and Application layers per IEEE 1815
 - **TCP/IP Communication**: Connect to DNP3 devices over IP networks
+- **Thread-Safe**: Safe for use in multi-threaded applications
 - **Data Point Support**:
   - Binary Inputs (Group 1, 2)
   - Binary Outputs (Group 10, 12)
@@ -20,17 +21,29 @@ This driver implements the DNP3 protocol stack to communicate with DNP3 outstati
   - Direct Operate
   - Select-Before-Operate (SBO)
   - Pulse control
+  - Trip/Close for breakers and switches
 - **Class-Based Polling**: Support for Class 0, 1, 2, 3 data
-- **CRC-16 Error Detection**: Compliant with DNP3 CRC polynomial
+- **CRC-16 Error Detection**: Compliant with DNP3 CRC polynomial (0x3D65)
+- **Multi-Fragment Support**: Handles large responses with automatic reassembly
+
+## Requirements
+
+- Python 3.9 or higher
+- No external dependencies (pure Python, standard library only)
 
 ## Installation
 
 ```bash
-# Clone or copy the dnp3_driver directory to your project
-pip install -e dnp3_driver/
-```
+# Clone the repository
+git clone https://github.com/fxodell/pydnp3.git
+cd pydnp3
 
-Or simply add the dnp3_driver directory to your Python path.
+# Install in development mode
+pip install -e .
+
+# Or install with development dependencies
+pip install -e ".[dev]"
+```
 
 ## Quick Start
 
@@ -73,7 +86,7 @@ with master.connect():
 ## Architecture
 
 ```
-dnp3_driver/
+pydnp3/
 ├── __init__.py           # Package exports
 ├── core/
 │   ├── master.py         # DNP3Master class (main interface)
@@ -94,7 +107,7 @@ dnp3_driver/
 ├── examples/
 │   ├── basic_usage.py    # Basic usage examples
 │   └── async_example.py  # Async/threading example
-└── tests/                # Unit tests
+└── tests/                # Unit tests (130 test cases)
 ```
 
 ## Protocol Layers
@@ -104,18 +117,21 @@ dnp3_driver/
 - Source and destination addressing (0-65519)
 - CRC-16 error checking every 16 bytes
 - Maximum frame size: 292 bytes (250 bytes user data)
+- Frame Count Bit (FCB) synchronization
 
 ### Transport Layer
 - Message segmentation/reassembly
-- 1-byte transport header with sequence numbering
+- 1-byte transport header with 6-bit sequence numbering
 - FIR (First) and FIN (Final) segment flags
 - Maximum segment payload: 249 bytes
+- Message size limit protection (64KB)
 
 ### Application Layer
 - Request/Response message formatting
 - Function codes (READ, WRITE, SELECT, OPERATE, etc.)
 - Object headers with qualifiers
 - Internal Indications (IIN) handling
+- 4-bit sequence numbering with validation
 
 ## Configuration Options
 
@@ -132,6 +148,7 @@ config = DNP3Config(
     # Timeouts (seconds)
     response_timeout=5.0,
     connection_timeout=10.0,
+    select_timeout=10.0,      # SBO timeout
 
     # Retries
     max_retries=3,
@@ -185,6 +202,19 @@ master.pulse_binary(
 )
 ```
 
+### Trip/Close Control
+For breakers and switches (uses Trip-Close-Code per IEEE 1815):
+
+```python
+from dnp3_driver.objects.binary import BinaryOutputCommand
+
+# Trip (open) a breaker - TCC=2 (0x80)
+cmd = BinaryOutputCommand.trip(index=0)
+
+# Close a breaker - TCC=1 (0x40)
+cmd = BinaryOutputCommand.close(index=0)
+```
+
 ## Exception Handling
 
 ```python
@@ -212,9 +242,26 @@ except DNP3Error as e:
 ## Running Tests
 
 ```bash
-cd dnp3_driver
+# Run all tests
 pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=dnp3_driver --cov-report=html
+
+# Run specific test file
+pytest tests/test_crc.py -v
 ```
+
+The test suite includes 130 test cases covering:
+- CRC-16 calculation and verification
+- Data Link Layer frame construction and parsing
+- Transport Layer segmentation and reassembly
+- Application Layer request/response handling
+- Object parsing for all supported data types
+
+## Thread Safety
+
+The `DNP3Master` class is thread-safe. The request-response cycle is protected by a lock, ensuring that concurrent calls from multiple threads are properly serialized. However, for high-throughput applications, consider using separate `DNP3Master` instances per thread.
 
 ## References
 
@@ -224,7 +271,7 @@ pytest tests/ -v
 
 ## License
 
-This implementation is provided as-is for educational and development purposes.
+MIT License - This implementation is provided as-is for educational and development purposes.
 
 ## Disclaimer
 
