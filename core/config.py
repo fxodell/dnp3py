@@ -98,9 +98,14 @@ class ControlCode(IntEnum):
     # Clear flag (OR with above)
     CLEAR = 0x20
 
-    # Trip/Close for switches
-    TRIP_CLOSE_TRIP = 0x40
-    TRIP_CLOSE_CLOSE = 0x80
+    # Trip/Close Code (TCC) for switches - bits [7:6] of control code
+    # Per IEEE 1815: TCC=1 (0x40) = Close, TCC=2 (0x80) = Trip
+    TCC_CLOSE = 0x40         # TCC=1: Close the switch/breaker
+    TCC_TRIP = 0x80          # TCC=2: Trip (open) the switch/breaker
+
+    # Legacy aliases (deprecated - use TCC_TRIP and TCC_CLOSE instead)
+    TRIP_CLOSE_CLOSE = 0x40  # Actually sends Close (TCC=1)
+    TRIP_CLOSE_TRIP = 0x80   # Actually sends Trip (TCC=2)
 
 
 class ControlStatus(IntEnum):

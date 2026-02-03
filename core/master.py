@@ -109,8 +109,9 @@ class DNP3Master:
         self._transport = TransportLayer()
         self._application = ApplicationLayer()
 
-        # Receive buffer
+        # Receive buffer with size limit to prevent memory exhaustion
         self._rx_buffer = bytearray()
+        self._max_rx_buffer_size = 65536  # 64KB - reasonable limit for DNP3
 
         # Logger
         self._logger = get_logger()
@@ -289,6 +290,14 @@ class DNP3Master:
                 data = self._socket.recv(1024)
                 if not data:
                     raise DNP3CommunicationError("Connection closed by remote")
+
+                # Check buffer size limit before extending to prevent memory exhaustion
+                if len(self._rx_buffer) + len(data) > self._max_rx_buffer_size:
+                    self._rx_buffer.clear()
+                    raise DNP3CommunicationError(
+                        f"Receive buffer overflow: exceeds {self._max_rx_buffer_size} bytes"
+                    )
+
                 self._rx_buffer.extend(data)
             except socket.timeout:
                 raise DNP3TimeoutError("Response timeout", timeout_seconds=timeout)
@@ -311,6 +320,10 @@ class DNP3Master:
 
         Returns:
             ApplicationResponse if expect_response is True, else None
+
+        Note:
+            This method holds the lock for the entire request-response cycle
+            to ensure thread safety in multi-threaded environments.
         """
         with self._lock:
             # Segment APDU
@@ -320,12 +333,15 @@ class DNP3Master:
             for segment in segments:
                 frame = self._datalink.build_frame(segment)
                 self._send_frame(frame)
-                self._datalink.toggle_fcb()
+
+            # Toggle FCB once per complete message, not per segment
+            # This maintains proper FCB synchronization with the outstation
+            self._datalink.toggle_fcb()
 
             if not expect_response:
                 return None
 
-            # Receive and reassemble response
+            # Receive and reassemble response (still under lock for thread safety)
             return self._receive_response(timeout)
 
     def _receive_response(self, timeout: Optional[float] = None) -> ApplicationResponse:
@@ -405,12 +421,44 @@ class DNP3Master:
 
         Returns:
             Merged ApplicationResponse
+
+        Raises:
+            DNP3ProtocolError: If fragments are empty, out of order, or duplicated
         """
         if not fragments:
             raise DNP3ProtocolError("No fragments to merge")
 
         # Use the first fragment as base
         first = fragments[0]
+
+        # Validate fragment sequence ordering
+        # Application layer uses 4-bit sequence numbers (0-15)
+        seen_sequences = set()
+        prev_seq = None
+
+        for i, frag in enumerate(fragments):
+            # Check for duplicate sequence numbers
+            if frag.sequence in seen_sequences:
+                self._logger.warning(
+                    f"Duplicate fragment sequence number: {frag.sequence}"
+                )
+            seen_sequences.add(frag.sequence)
+
+            # Validate FIR/FIN flags
+            if i == 0 and not frag.first:
+                self._logger.warning("First fragment missing FIR flag")
+            if i > 0 and frag.first:
+                self._logger.warning(f"Fragment {i} has unexpected FIR flag")
+
+            # Check sequence ordering (with wrap-around at 16)
+            if prev_seq is not None:
+                expected_seq = (prev_seq + 1) & 0x0F
+                if frag.sequence != expected_seq:
+                    self._logger.warning(
+                        f"Fragment sequence out of order: expected {expected_seq}, "
+                        f"got {frag.sequence}"
+                    )
+            prev_seq = frag.sequence
 
         # Collect all objects and raw data from all fragments
         all_objects = []

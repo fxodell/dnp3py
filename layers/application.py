@@ -29,6 +29,23 @@ from dnp3_driver.core.config import (
     IINFlags,
 )
 from dnp3_driver.core.exceptions import DNP3ProtocolError, DNP3ObjectError
+from dnp3_driver.utils.logging import get_logger
+
+# Module-level logger for application layer warnings
+_logger = get_logger()
+
+# Known qualifier codes for validation
+_KNOWN_QUALIFIERS = {
+    QualifierCode.UINT8_START_STOP,
+    QualifierCode.UINT16_START_STOP,
+    QualifierCode.ALL_OBJECTS,
+    QualifierCode.UINT8_COUNT,
+    QualifierCode.UINT16_COUNT,
+    QualifierCode.UINT8_COUNT_UINT8_INDEX,
+    QualifierCode.UINT8_COUNT_UINT16_INDEX,
+    QualifierCode.UINT16_COUNT_UINT16_INDEX,
+    QualifierCode.FREE_FORMAT_UINT16_COUNT,
+}
 
 
 # Application control byte flags
@@ -153,6 +170,14 @@ class ObjectHeader:
                     raise DNP3ObjectError("Insufficient data for count")
                 count = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
                 consumed += 2
+        else:
+            # Unknown or unsupported qualifier code
+            # Log warning but continue parsing for forward compatibility
+            if qualifier not in _KNOWN_QUALIFIERS:
+                _logger.warning(
+                    f"Unknown qualifier code 0x{qualifier:02X} for group {group}, "
+                    f"variation {variation}. Object data may be parsed incorrectly."
+                )
 
         return cls(
             group=group,

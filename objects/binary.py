@@ -211,13 +211,21 @@ class BinaryOutputCommand:
 
     @classmethod
     def trip(cls, index: int) -> "BinaryOutputCommand":
-        """Create a trip command (for breakers/switches)."""
-        return cls(index=index, control_code=ControlCode.TRIP_CLOSE_TRIP | ControlCode.LATCH_ON)
+        """
+        Create a trip (open) command for breakers/switches.
+
+        Per IEEE 1815, TCC=2 (0x80) signals a Trip operation.
+        """
+        return cls(index=index, control_code=ControlCode.TCC_TRIP | ControlCode.LATCH_ON)
 
     @classmethod
     def close(cls, index: int) -> "BinaryOutputCommand":
-        """Create a close command (for breakers/switches)."""
-        return cls(index=index, control_code=ControlCode.TRIP_CLOSE_CLOSE | ControlCode.LATCH_ON)
+        """
+        Create a close command for breakers/switches.
+
+        Per IEEE 1815, TCC=1 (0x40) signals a Close operation.
+        """
+        return cls(index=index, control_code=ControlCode.TCC_CLOSE | ControlCode.LATCH_ON)
 
     def to_bytes(self) -> bytes:
         """Serialize to bytes (Group 12, Variation 1 format)."""
