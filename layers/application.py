@@ -1,0 +1,596 @@
+"""
+DNP3 Application Layer implementation.
+
+The Application Layer handles:
+- Request/response message formatting
+- Function code processing
+- Object header construction and parsing
+- Internal Indication (IIN) handling
+
+Application Layer Message Structure:
+    Request:  [Control: 1 byte][Function: 1 byte][Object Headers...]
+    Response: [Control: 1 byte][Function: 1 byte][IIN: 2 bytes][Object Headers...]
+
+Application Control Byte:
+    - Bit 7 (FIR): First fragment
+    - Bit 6 (FIN): Final fragment
+    - Bit 5 (CON): Confirmation required
+    - Bit 4 (UNS): Unsolicited response
+    - Bits 3-0: Sequence number (0-15)
+"""
+
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple, Any
+from enum import IntEnum
+
+from dnp3_driver.core.config import (
+    AppLayerFunction,
+    QualifierCode,
+    IINFlags,
+)
+from dnp3_driver.core.exceptions import DNP3ProtocolError, DNP3ObjectError
+
+
+# Application control byte flags
+FIR_FLAG = 0x80
+FIN_FLAG = 0x40
+CON_FLAG = 0x20
+UNS_FLAG = 0x10
+SEQ_MASK = 0x0F
+
+
+@dataclass
+class ObjectHeader:
+    """
+    DNP3 Object Header.
+
+    Specifies the group, variation, and qualifier for data objects.
+    """
+
+    group: int
+    variation: int
+    qualifier: int
+    range_start: int = 0
+    range_stop: int = 0
+    count: int = 0
+    data: bytes = b""
+    data_offset: int = 0  # Offset in raw_data where this object's data starts
+
+    def to_bytes(self) -> bytes:
+        """Serialize object header to bytes."""
+        result = bytearray([self.group, self.variation, self.qualifier])
+
+        # Add range/count based on qualifier
+        if self.qualifier == QualifierCode.UINT8_START_STOP:
+            result.append(self.range_start & 0xFF)
+            result.append(self.range_stop & 0xFF)
+        elif self.qualifier == QualifierCode.UINT16_START_STOP:
+            result.extend(self.range_start.to_bytes(2, "little"))
+            result.extend(self.range_stop.to_bytes(2, "little"))
+        elif self.qualifier == QualifierCode.ALL_OBJECTS:
+            pass  # No range field
+        elif self.qualifier == QualifierCode.UINT8_COUNT:
+            result.append(self.count & 0xFF)
+        elif self.qualifier == QualifierCode.UINT16_COUNT:
+            result.extend(self.count.to_bytes(2, "little"))
+        elif self.qualifier in (
+            QualifierCode.UINT8_COUNT_UINT8_INDEX,
+            QualifierCode.UINT8_COUNT_UINT16_INDEX,
+        ):
+            result.append(self.count & 0xFF)
+        elif self.qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
+            result.extend(self.count.to_bytes(2, "little"))
+
+        # Add data if present
+        result.extend(self.data)
+
+        return bytes(result)
+
+    @classmethod
+    def from_bytes(cls, data: bytes, offset: int = 0) -> Tuple["ObjectHeader", int]:
+        """
+        Parse object header from bytes.
+
+        Args:
+            data: Raw bytes
+            offset: Starting offset in data
+
+        Returns:
+            Tuple of (ObjectHeader, bytes consumed)
+        """
+        if len(data) - offset < 3:
+            raise DNP3ObjectError("Insufficient data for object header")
+
+        group = data[offset]
+        variation = data[offset + 1]
+        qualifier = data[offset + 2]
+        consumed = 3
+
+        range_start = 0
+        range_stop = 0
+        count = 0
+
+        # Parse range/count based on qualifier
+        if qualifier == QualifierCode.UINT8_START_STOP:
+            if len(data) - offset - consumed < 2:
+                raise DNP3ObjectError("Insufficient data for range")
+            range_start = data[offset + consumed]
+            range_stop = data[offset + consumed + 1]
+            count = range_stop - range_start + 1
+            consumed += 2
+        elif qualifier == QualifierCode.UINT16_START_STOP:
+            if len(data) - offset - consumed < 4:
+                raise DNP3ObjectError("Insufficient data for range")
+            range_start = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
+            range_stop = int.from_bytes(data[offset + consumed + 2:offset + consumed + 4], "little")
+            count = range_stop - range_start + 1
+            consumed += 4
+        elif qualifier == QualifierCode.ALL_OBJECTS:
+            pass  # No range field
+        elif qualifier == QualifierCode.UINT8_COUNT:
+            if len(data) - offset - consumed < 1:
+                raise DNP3ObjectError("Insufficient data for count")
+            count = data[offset + consumed]
+            consumed += 1
+        elif qualifier == QualifierCode.UINT16_COUNT:
+            if len(data) - offset - consumed < 2:
+                raise DNP3ObjectError("Insufficient data for count")
+            count = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
+            consumed += 2
+        elif qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
+            if len(data) - offset - consumed < 1:
+                raise DNP3ObjectError("Insufficient data for count")
+            count = data[offset + consumed]
+            consumed += 1
+        elif qualifier in (QualifierCode.UINT8_COUNT_UINT16_INDEX, QualifierCode.UINT16_COUNT_UINT16_INDEX):
+            if qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
+                if len(data) - offset - consumed < 1:
+                    raise DNP3ObjectError("Insufficient data for count")
+                count = data[offset + consumed]
+                consumed += 1
+            else:
+                if len(data) - offset - consumed < 2:
+                    raise DNP3ObjectError("Insufficient data for count")
+                count = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
+                consumed += 2
+
+        return cls(
+            group=group,
+            variation=variation,
+            qualifier=qualifier,
+            range_start=range_start,
+            range_stop=range_stop,
+            count=count,
+            data=b"",  # Data will be parsed separately
+        ), consumed
+
+    def __repr__(self) -> str:
+        return f"ObjectHeader(g{self.group}v{self.variation}, q=0x{self.qualifier:02X}, count={self.count})"
+
+
+@dataclass
+class ApplicationRequest:
+    """DNP3 Application Layer request message."""
+
+    function: int
+    sequence: int = 0
+    first: bool = True
+    final: bool = True
+    confirm: bool = False
+    objects: List[ObjectHeader] = field(default_factory=list)
+
+    @property
+    def control(self) -> int:
+        """Build the application control byte."""
+        ctrl = self.sequence & SEQ_MASK
+        if self.first:
+            ctrl |= FIR_FLAG
+        if self.final:
+            ctrl |= FIN_FLAG
+        if self.confirm:
+            ctrl |= CON_FLAG
+        return ctrl
+
+    def to_bytes(self) -> bytes:
+        """Serialize request to bytes."""
+        result = bytearray([self.control, self.function])
+        for obj_header in self.objects:
+            result.extend(obj_header.to_bytes())
+        return bytes(result)
+
+    @classmethod
+    def read_class_0(cls, sequence: int = 0) -> "ApplicationRequest":
+        """Create a Class 0 (static data) read request."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[ObjectHeader(group=60, variation=1, qualifier=QualifierCode.ALL_OBJECTS)],
+        )
+
+    @classmethod
+    def read_class_1(cls, sequence: int = 0) -> "ApplicationRequest":
+        """Create a Class 1 events read request."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[ObjectHeader(group=60, variation=2, qualifier=QualifierCode.ALL_OBJECTS)],
+        )
+
+    @classmethod
+    def read_class_2(cls, sequence: int = 0) -> "ApplicationRequest":
+        """Create a Class 2 events read request."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[ObjectHeader(group=60, variation=3, qualifier=QualifierCode.ALL_OBJECTS)],
+        )
+
+    @classmethod
+    def read_class_3(cls, sequence: int = 0) -> "ApplicationRequest":
+        """Create a Class 3 events read request."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[ObjectHeader(group=60, variation=4, qualifier=QualifierCode.ALL_OBJECTS)],
+        )
+
+    @classmethod
+    def read_all_classes(cls, sequence: int = 0) -> "ApplicationRequest":
+        """Create a read request for all classes (integrity poll)."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[
+                ObjectHeader(group=60, variation=1, qualifier=QualifierCode.ALL_OBJECTS),  # Class 0
+                ObjectHeader(group=60, variation=2, qualifier=QualifierCode.ALL_OBJECTS),  # Class 1
+                ObjectHeader(group=60, variation=3, qualifier=QualifierCode.ALL_OBJECTS),  # Class 2
+                ObjectHeader(group=60, variation=4, qualifier=QualifierCode.ALL_OBJECTS),  # Class 3
+            ],
+        )
+
+    @classmethod
+    def read_binary_inputs(cls, start: int = 0, stop: int = 0, sequence: int = 0) -> "ApplicationRequest":
+        """Create a binary inputs read request."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[ObjectHeader(
+                group=1, variation=0,  # Variation 0 = any variation
+                qualifier=QualifierCode.UINT16_START_STOP,
+                range_start=start,
+                range_stop=stop,
+            )],
+        )
+
+    @classmethod
+    def read_analog_inputs(cls, start: int = 0, stop: int = 0, sequence: int = 0) -> "ApplicationRequest":
+        """Create an analog inputs read request."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[ObjectHeader(
+                group=30, variation=0,
+                qualifier=QualifierCode.UINT16_START_STOP,
+                range_start=start,
+                range_stop=stop,
+            )],
+        )
+
+    @classmethod
+    def read_counters(cls, start: int = 0, stop: int = 0, sequence: int = 0) -> "ApplicationRequest":
+        """Create a counters read request."""
+        return cls(
+            function=AppLayerFunction.READ,
+            sequence=sequence,
+            objects=[ObjectHeader(
+                group=20, variation=0,
+                qualifier=QualifierCode.UINT16_START_STOP,
+                range_start=start,
+                range_stop=stop,
+            )],
+        )
+
+
+@dataclass
+class ApplicationResponse:
+    """DNP3 Application Layer response message."""
+
+    function: int
+    sequence: int
+    first: bool
+    final: bool
+    confirm_required: bool
+    unsolicited: bool
+    iin: IINFlags
+    objects: List[ObjectHeader] = field(default_factory=list)
+    raw_data: bytes = b""
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "ApplicationResponse":
+        """
+        Parse a response from bytes.
+
+        Args:
+            data: Raw APDU bytes
+
+        Returns:
+            Parsed ApplicationResponse
+        """
+        if len(data) < 4:
+            raise DNP3ProtocolError("Response too short")
+
+        control = data[0]
+        function = data[1]
+        iin1 = data[2]
+        iin2 = data[3]
+
+        sequence = control & SEQ_MASK
+        first = bool(control & FIR_FLAG)
+        final = bool(control & FIN_FLAG)
+        confirm_required = bool(control & CON_FLAG)
+        unsolicited = bool(control & UNS_FLAG)
+
+        iin = IINFlags.from_bytes(iin1, iin2)
+
+        # Parse object headers and their data from remaining data
+        # DNP3 format: [Header1][Data1][Header2][Data2]...
+        objects = []
+        offset = 4
+        data_start_offset = 0  # Offset within raw_data (data[4:])
+
+        while offset < len(data):
+            try:
+                obj_header, header_consumed = ObjectHeader.from_bytes(data, offset)
+
+                # Calculate data size for this object
+                data_size = cls._calculate_object_data_size(
+                    obj_header.group,
+                    obj_header.variation,
+                    obj_header.qualifier,
+                    obj_header.count,
+                    obj_header.range_start,
+                    obj_header.range_stop,
+                )
+
+                # Set the data offset (relative to raw_data start at data[4:])
+                obj_header.data_offset = (offset - 4) + header_consumed
+
+                objects.append(obj_header)
+                offset += header_consumed + data_size
+
+            except DNP3ObjectError:
+                break  # No more valid object headers
+
+        return cls(
+            function=function,
+            sequence=sequence,
+            first=first,
+            final=final,
+            confirm_required=confirm_required,
+            unsolicited=unsolicited,
+            iin=iin,
+            objects=objects,
+            raw_data=data[4:],
+        )
+
+    @staticmethod
+    def _calculate_object_data_size(
+        group: int,
+        variation: int,
+        qualifier: int,
+        count: int,
+        range_start: int,
+        range_stop: int,
+    ) -> int:
+        """
+        Calculate the size of object data following a header.
+
+        Args:
+            group: Object group number
+            variation: Object variation
+            qualifier: Qualifier code
+            count: Object count
+            range_start: Range start index
+            range_stop: Range stop index
+
+        Returns:
+            Size of object data in bytes
+        """
+        # Import here to avoid circular dependency
+        from dnp3_driver.objects.groups import get_object_size
+
+        if count == 0:
+            return 0
+
+        # Get object size for this group/variation
+        obj_size = get_object_size(group, variation)
+
+        if obj_size is not None:
+            # Fixed size objects
+            return obj_size * count
+
+        # Handle variable-size objects
+
+        # Packed binary (1 bit per point)
+        if group in (1, 10) and variation == 1:
+            return (count + 7) // 8  # Ceiling division for bits to bytes
+
+        # For indexed qualifiers, the size includes index prefixes
+        if qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
+            # Each object has 1-byte index prefix
+            base_size = get_object_size(group, variation) or 0
+            return count * (1 + base_size)
+        elif qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
+            # Each object has 2-byte index prefix
+            base_size = get_object_size(group, variation) or 0
+            return count * (2 + base_size)
+        elif qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
+            # Each object has 2-byte index prefix
+            base_size = get_object_size(group, variation) or 0
+            return count * (2 + base_size)
+
+        # Unknown size - return 0 and let caller handle
+        return 0
+
+    def __repr__(self) -> str:
+        flags = []
+        if self.first:
+            flags.append("FIR")
+        if self.final:
+            flags.append("FIN")
+        if self.confirm_required:
+            flags.append("CON")
+        if self.unsolicited:
+            flags.append("UNS")
+        flag_str = "|".join(flags) if flags else "none"
+        return (
+            f"ApplicationResponse(func=0x{self.function:02X}, seq={self.sequence}, "
+            f"flags={flag_str}, objects={len(self.objects)})"
+        )
+
+
+class ApplicationLayer:
+    """
+    DNP3 Application Layer encoder/decoder.
+
+    Handles request/response formatting and parsing.
+    """
+
+    def __init__(self):
+        """Initialize Application Layer."""
+        self._tx_sequence = 0
+        self._rx_sequence: Optional[int] = None
+
+    def build_request(
+        self,
+        function: int,
+        objects: Optional[List[ObjectHeader]] = None,
+        confirm: bool = False,
+    ) -> bytes:
+        """
+        Build an application layer request.
+
+        Args:
+            function: Function code
+            objects: List of object headers
+            confirm: Request confirmation from outstation
+
+        Returns:
+            APDU bytes
+        """
+        request = ApplicationRequest(
+            function=function,
+            sequence=self._tx_sequence,
+            first=True,
+            final=True,
+            confirm=confirm,
+            objects=objects or [],
+        )
+
+        self._tx_sequence = (self._tx_sequence + 1) & SEQ_MASK
+        return request.to_bytes()
+
+    def build_confirm(self, sequence: int, unsolicited: bool = False) -> bytes:
+        """
+        Build an application layer confirmation.
+
+        Args:
+            sequence: Sequence number to confirm
+            unsolicited: True if confirming an unsolicited response
+
+        Returns:
+            APDU bytes
+        """
+        control = sequence & SEQ_MASK
+        control |= FIR_FLAG | FIN_FLAG
+        if unsolicited:
+            control |= UNS_FLAG
+
+        return bytes([control, AppLayerFunction.CONFIRM])
+
+    def build_read_request(
+        self,
+        group: int,
+        variation: int = 0,
+        start: Optional[int] = None,
+        stop: Optional[int] = None,
+    ) -> bytes:
+        """
+        Build a READ request for specific objects.
+
+        Args:
+            group: Object group number
+            variation: Object variation (0 = any)
+            start: Start index (None for all objects)
+            stop: Stop index
+
+        Returns:
+            APDU bytes
+        """
+        if start is not None and stop is not None:
+            obj_header = ObjectHeader(
+                group=group,
+                variation=variation,
+                qualifier=QualifierCode.UINT16_START_STOP,
+                range_start=start,
+                range_stop=stop,
+            )
+        else:
+            obj_header = ObjectHeader(
+                group=group,
+                variation=variation,
+                qualifier=QualifierCode.ALL_OBJECTS,
+            )
+
+        return self.build_request(AppLayerFunction.READ, [obj_header])
+
+    def build_integrity_poll(self) -> bytes:
+        """Build an integrity poll (read all classes)."""
+        request = ApplicationRequest.read_all_classes(self._tx_sequence)
+        self._tx_sequence = (self._tx_sequence + 1) & SEQ_MASK
+        return request.to_bytes()
+
+    def build_class_poll(self, class_num: int) -> bytes:
+        """
+        Build a class poll request.
+
+        Args:
+            class_num: Class number (0, 1, 2, or 3)
+
+        Returns:
+            APDU bytes
+        """
+        if class_num == 0:
+            request = ApplicationRequest.read_class_0(self._tx_sequence)
+        elif class_num == 1:
+            request = ApplicationRequest.read_class_1(self._tx_sequence)
+        elif class_num == 2:
+            request = ApplicationRequest.read_class_2(self._tx_sequence)
+        elif class_num == 3:
+            request = ApplicationRequest.read_class_3(self._tx_sequence)
+        else:
+            raise ValueError(f"Invalid class number: {class_num}")
+
+        self._tx_sequence = (self._tx_sequence + 1) & SEQ_MASK
+        return request.to_bytes()
+
+    def parse_response(self, data: bytes) -> ApplicationResponse:
+        """
+        Parse an application layer response.
+
+        Args:
+            data: Raw APDU bytes
+
+        Returns:
+            Parsed ApplicationResponse
+        """
+        return ApplicationResponse.from_bytes(data)
+
+    @property
+    def sequence(self) -> int:
+        """Get current transmit sequence number."""
+        return self._tx_sequence
+
+    def reset_sequence(self) -> None:
+        """Reset the sequence number to 0."""
+        self._tx_sequence = 0
