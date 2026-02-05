@@ -25,6 +25,7 @@ from dnp3_driver.core.exceptions import (
     DNP3TimeoutError,
     DNP3ProtocolError,
     DNP3CRCError,
+    DNP3FrameError,
     DNP3ControlError,
 )
 from dnp3_driver.layers.datalink import DataLinkLayer, DataLinkFrame
@@ -274,7 +275,7 @@ class DNP3Master:
                         del self._rx_buffer[:consumed]
 
                         return frame
-                except (DNP3CRCError, Exception):
+                except (DNP3CRCError, DNP3FrameError):
                     # Invalid frame, skip first byte and try again
                     del self._rx_buffer[:1]
                     continue
@@ -318,9 +319,15 @@ class DNP3Master:
 
             # Send each segment as a data link frame
             for segment in segments:
-                frame = self._datalink.build_frame(segment)
+                confirmed = self.config.confirm_required
+                frame = self._datalink.build_frame(
+                    segment,
+                    confirmed=confirmed,
+                    fcv=confirmed,
+                )
                 self._send_frame(frame)
-                self._datalink.toggle_fcb()
+                if confirmed:
+                    self._datalink.toggle_fcb()
 
             if not expect_response:
                 return None
@@ -362,7 +369,10 @@ class DNP3Master:
             frame = self._receive_frame(remaining_timeout)
 
             # Reassemble transport layer
-            apdu, complete = self._transport.reassemble(frame.user_data)
+            apdu, complete = self._transport.reassemble(
+                frame.user_data,
+                timeout_seconds=remaining_timeout,
+            )
 
             if complete and apdu is not None:
                 response = self._application.parse_response(apdu)
@@ -371,6 +381,13 @@ class DNP3Master:
                 # Check for errors in IIN
                 if response.iin.has_errors():
                     self._logger.warning(f"Response has IIN errors: {response.iin}")
+                if response.iin.has_reserved_bits():
+                    self._logger.warning(
+                        "Response has reserved IIN bits set (raw=0x%02X 0x%02X, decoded=%s)",
+                        response.iin1,
+                        response.iin2,
+                        response.iin,
+                    )
 
                 # Handle confirmation if required
                 if response.confirm_required:
@@ -400,11 +417,14 @@ class DNP3Master:
         """
         Merge multiple application layer fragments into a single response.
 
+        When merging fragments, object data_offset values must be adjusted to
+        account for the concatenation of raw_data from previous fragments.
+
         Args:
             fragments: List of response fragments
 
         Returns:
-            Merged ApplicationResponse
+            Merged ApplicationResponse with adjusted data offsets
         """
         if not fragments:
             raise DNP3ProtocolError("No fragments to merge")
@@ -413,12 +433,31 @@ class DNP3Master:
         first = fragments[0]
 
         # Collect all objects and raw data from all fragments
+        # Track cumulative offset to adjust object data_offset values
         all_objects = []
         all_raw_data = bytearray()
+        cumulative_offset = 0
 
         for frag in fragments:
-            all_objects.extend(frag.objects)
+            # Adjust data_offset for each object in this fragment
+            # to account for raw_data from previous fragments
+            for obj in frag.objects:
+                # Create a copy with adjusted offset to avoid modifying original
+                adjusted_obj = ObjectHeader(
+                    group=obj.group,
+                    variation=obj.variation,
+                    qualifier=obj.qualifier,
+                    range_start=obj.range_start,
+                    range_stop=obj.range_stop,
+                    count=obj.count,
+                    data=obj.data,
+                    data_offset=obj.data_offset + cumulative_offset,
+                )
+                all_objects.append(adjusted_obj)
+
+            # Append this fragment's raw_data and update cumulative offset
             all_raw_data.extend(frag.raw_data)
+            cumulative_offset += len(frag.raw_data)
 
         # Return merged response with last fragment's IIN (most current state)
         return ApplicationResponse(
@@ -429,6 +468,8 @@ class DNP3Master:
             confirm_required=False,
             unsolicited=first.unsolicited,
             iin=fragments[-1].iin,  # Use last IIN for most current state
+            iin1=fragments[-1].iin1,
+            iin2=fragments[-1].iin2,
             objects=all_objects,
             raw_data=bytes(all_raw_data),
         )
@@ -805,7 +846,14 @@ class DNP3Master:
         return self._check_control_response(response)
 
     def _check_control_response(self, response: ApplicationResponse) -> bool:
-        """Check if control response indicates success."""
+        """Check if control response indicates success.
+
+        Args:
+            response: The application response to check
+
+        Returns:
+            True if all control operations succeeded, False otherwise
+        """
         if response.iin.has_errors():
             self._logger.error(f"Control failed with IIN errors: {response.iin}")
             return False
@@ -815,21 +863,55 @@ class DNP3Master:
         for obj_header in response.objects:
             group = obj_header.group
             raw_data = response.raw_data
+            qualifier = obj_header.qualifier
+
+            # Determine index prefix size based on qualifier
+            # Control responses typically use indexed qualifiers
+            index_prefix_size = 0
+            if qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
+                index_prefix_size = 1
+            elif qualifier in (QualifierCode.UINT8_COUNT_UINT16_INDEX,
+                             QualifierCode.UINT16_COUNT_UINT16_INDEX):
+                index_prefix_size = 2
 
             # CROB response (Group 12)
             if group == ObjectGroup.CONTROL_RELAY_OUTPUT_BLOCK:
                 data_offset = obj_header.data_offset
-                obj_size = get_object_size(group, obj_header.variation) or 11
+                obj_size = get_object_size(group, obj_header.variation)
+
+                if obj_size is None or obj_size < 11:
+                    self._logger.warning(
+                        f"Skipping CROB response with unexpected size: "
+                        f"variation={obj_header.variation}, size={obj_size}"
+                    )
+                    continue
+
+                # Total size per object includes index prefix (if present) + object data
+                total_obj_size = index_prefix_size + obj_size
 
                 for i in range(obj_header.count):
-                    offset = data_offset + i * obj_size
-                    if offset + obj_size > len(raw_data):
+                    offset = data_offset + i * total_obj_size
+
+                    # Skip past index prefix to get to actual CROB data
+                    crob_data_offset = offset + index_prefix_size
+
+                    if crob_data_offset + obj_size > len(raw_data):
+                        self._logger.warning(
+                            f"CROB data extends beyond response buffer at index {i}"
+                        )
                         break
-                    # Status byte is at the end of CROB (offset + 10)
-                    status = raw_data[offset + 10] if obj_size >= 11 else 0
+
+                    # Status byte is the last byte of CROB (11 bytes total)
+                    status = raw_data[crob_data_offset + 10]
                     if status != ControlStatus.SUCCESS:
+                        status_name = "UNKNOWN"
+                        try:
+                            status_name = ControlStatus(status).name
+                        except ValueError:
+                            pass
                         self._logger.error(
-                            f"Control operation failed with status: {status}"
+                            f"Control operation failed at index {i} with status: "
+                            f"{status} ({status_name})"
                         )
                         return False
 
@@ -838,18 +920,41 @@ class DNP3Master:
                 data_offset = obj_header.data_offset
                 obj_size = get_object_size(group, obj_header.variation)
 
-                if obj_size is not None:
-                    for i in range(obj_header.count):
-                        offset = data_offset + i * obj_size
-                        if offset + obj_size > len(raw_data):
-                            break
-                        # Status byte is at the end
-                        status = raw_data[offset + obj_size - 1]
-                        if status != ControlStatus.SUCCESS:
-                            self._logger.error(
-                                f"Analog control operation failed with status: {status}"
-                            )
-                            return False
+                if obj_size is None:
+                    self._logger.warning(
+                        f"Skipping AOB response with unknown size: "
+                        f"variation={obj_header.variation}"
+                    )
+                    continue
+
+                # Total size per object includes index prefix (if present) + object data
+                total_obj_size = index_prefix_size + obj_size
+
+                for i in range(obj_header.count):
+                    offset = data_offset + i * total_obj_size
+
+                    # Skip past index prefix to get to actual AOB data
+                    aob_data_offset = offset + index_prefix_size
+
+                    if aob_data_offset + obj_size > len(raw_data):
+                        self._logger.warning(
+                            f"AOB data extends beyond response buffer at index {i}"
+                        )
+                        break
+
+                    # Status byte is at the end of AOB
+                    status = raw_data[aob_data_offset + obj_size - 1]
+                    if status != ControlStatus.SUCCESS:
+                        status_name = "UNKNOWN"
+                        try:
+                            status_name = ControlStatus(status).name
+                        except ValueError:
+                            pass
+                        self._logger.error(
+                            f"Analog control operation failed at index {i} with status: "
+                            f"{status} ({status_name})"
+                        )
+                        return False
 
         return True
 
@@ -877,6 +982,54 @@ class DNP3Master:
 
             # Use the data_offset from the header
             data_offset = obj_header.data_offset
+
+            # Indexed qualifiers include per-point indices in the data
+            if obj_header.qualifier in (
+                QualifierCode.UINT8_COUNT_UINT8_INDEX,
+                QualifierCode.UINT8_COUNT_UINT16_INDEX,
+                QualifierCode.UINT16_COUNT_UINT16_INDEX,
+            ):
+                index_size = 1 if obj_header.qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX else 2
+                obj_size = get_object_size(group, variation)
+                if obj_size is None:
+                    self._logger.warning(
+                        f"Skipping indexed object with unknown size: group={group}, variation={variation}"
+                    )
+                    continue
+
+                for i in range(count):
+                    offset = data_offset + i * (index_size + obj_size)
+                    end = offset + index_size + obj_size
+                    if end > len(raw_data):
+                        self._logger.warning(
+                            f"Indexed object exceeds response data: offset={offset}, "
+                            f"size={index_size + obj_size}, raw_data_len={len(raw_data)}"
+                        )
+                        break
+
+                    index = int.from_bytes(raw_data[offset:offset + index_size], "little")
+                    obj_data = raw_data[offset + index_size:end]
+
+                    if group == ObjectGroup.BINARY_INPUT:
+                        result.binary_inputs.append(BinaryInput.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.BINARY_OUTPUT:
+                        result.binary_outputs.append(BinaryOutput.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.ANALOG_INPUT:
+                        result.analog_inputs.append(AnalogInput.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.ANALOG_OUTPUT:
+                        result.analog_outputs.append(AnalogOutput.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.COUNTER:
+                        result.counters.append(Counter.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.BINARY_INPUT_EVENT:
+                        result.binary_inputs.append(BinaryInput.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.BINARY_OUTPUT_EVENT:
+                        result.binary_outputs.append(BinaryOutput.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.ANALOG_INPUT_EVENT:
+                        result.analog_inputs.append(AnalogInput.from_bytes(obj_data, index, variation))
+                    elif group == ObjectGroup.COUNTER_EVENT:
+                        result.counters.append(Counter.from_bytes(obj_data, index, variation))
+
+                continue
 
             # Calculate data size based on group/variation
             obj_size = get_object_size(group, variation)

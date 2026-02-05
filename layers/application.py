@@ -37,6 +37,7 @@ FIN_FLAG = 0x40
 CON_FLAG = 0x20
 UNS_FLAG = 0x10
 SEQ_MASK = 0x0F
+SEQ_MODULUS = 16  # Sequence numbers are 4-bit (0-15)
 
 
 @dataclass
@@ -62,9 +63,17 @@ class ObjectHeader:
 
         # Add range/count based on qualifier
         if self.qualifier == QualifierCode.UINT8_START_STOP:
+            if self.range_stop < self.range_start:
+                raise DNP3ObjectError(
+                    f"Invalid range: start {self.range_start} > stop {self.range_stop}"
+                )
             result.append(self.range_start & 0xFF)
             result.append(self.range_stop & 0xFF)
         elif self.qualifier == QualifierCode.UINT16_START_STOP:
+            if self.range_stop < self.range_start:
+                raise DNP3ObjectError(
+                    f"Invalid range: start {self.range_start} > stop {self.range_stop}"
+                )
             result.extend(self.range_start.to_bytes(2, "little"))
             result.extend(self.range_stop.to_bytes(2, "little"))
         elif self.qualifier == QualifierCode.ALL_OBJECTS:
@@ -80,6 +89,8 @@ class ObjectHeader:
             result.append(self.count & 0xFF)
         elif self.qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
             result.extend(self.count.to_bytes(2, "little"))
+        else:
+            raise DNP3ObjectError(f"Unsupported qualifier code: 0x{self.qualifier:02X}")
 
         # Add data if present
         result.extend(self.data)
@@ -116,6 +127,10 @@ class ObjectHeader:
                 raise DNP3ObjectError("Insufficient data for range")
             range_start = data[offset + consumed]
             range_stop = data[offset + consumed + 1]
+            if range_stop < range_start:
+                raise DNP3ObjectError(
+                    f"Invalid range: start {range_start} > stop {range_stop}"
+                )
             count = range_stop - range_start + 1
             consumed += 2
         elif qualifier == QualifierCode.UINT16_START_STOP:
@@ -123,6 +138,10 @@ class ObjectHeader:
                 raise DNP3ObjectError("Insufficient data for range")
             range_start = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
             range_stop = int.from_bytes(data[offset + consumed + 2:offset + consumed + 4], "little")
+            if range_stop < range_start:
+                raise DNP3ObjectError(
+                    f"Invalid range: start {range_start} > stop {range_stop}"
+                )
             count = range_stop - range_start + 1
             consumed += 4
         elif qualifier == QualifierCode.ALL_OBJECTS:
@@ -153,6 +172,8 @@ class ObjectHeader:
                     raise DNP3ObjectError("Insufficient data for count")
                 count = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
                 consumed += 2
+        else:
+            raise DNP3ObjectError(f"Unsupported qualifier code: 0x{qualifier:02X}")
 
         return cls(
             group=group,
@@ -178,6 +199,19 @@ class ApplicationRequest:
     final: bool = True
     confirm: bool = False
     objects: List[ObjectHeader] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Validate request parameters."""
+        # Validate sequence number is in valid range (0-15)
+        if not 0 <= self.sequence <= SEQ_MASK:
+            raise ValueError(
+                f"Sequence number must be 0-15, got {self.sequence}"
+            )
+        # Validate function code is a valid byte
+        if not 0 <= self.function <= 255:
+            raise ValueError(
+                f"Function code must be 0-255, got {self.function}"
+            )
 
     @property
     def control(self) -> int:
@@ -302,6 +336,8 @@ class ApplicationResponse:
     confirm_required: bool
     unsolicited: bool
     iin: IINFlags
+    iin1: int
+    iin2: int
     objects: List[ObjectHeader] = field(default_factory=list)
     raw_data: bytes = b""
 
@@ -323,6 +359,12 @@ class ApplicationResponse:
         function = data[1]
         iin1 = data[2]
         iin2 = data[3]
+        if function not in (
+            AppLayerFunction.RESPONSE,
+            AppLayerFunction.UNSOLICITED_RESPONSE,
+            AppLayerFunction.AUTHENTICATION_RESPONSE,
+        ):
+            raise DNP3ProtocolError(f"Invalid response function code: 0x{function:02X}")
 
         sequence = control & SEQ_MASK
         first = bool(control & FIR_FLAG)
@@ -334,9 +376,10 @@ class ApplicationResponse:
 
         # Parse object headers and their data from remaining data
         # DNP3 format: [Header1][Data1][Header2][Data2]...
+        # raw_data will be data[4:] (everything after control, function, IIN)
         objects = []
-        offset = 4
-        data_start_offset = 0  # Offset within raw_data (data[4:])
+        offset = 4  # Start after control(1) + function(1) + IIN(2)
+        raw_data_start = 4  # Where raw_data begins in the original data
 
         while offset < len(data):
             try:
@@ -352,14 +395,31 @@ class ApplicationResponse:
                     obj_header.range_stop,
                 )
 
-                # Set the data offset (relative to raw_data start at data[4:])
-                obj_header.data_offset = (offset - 4) + header_consumed
+                # Validate we have enough data remaining
+                total_object_size = header_consumed + data_size
+                if offset + total_object_size > len(data):
+                    # Not enough data for this object - truncated response
+                    break
 
+                # Set the data offset (relative to raw_data which starts at data[4:])
+                # The header ends at (offset + header_consumed), so the data starts there
+                # Relative to raw_data (data[4:]), this is:
+                data_offset_in_raw = (offset + header_consumed) - raw_data_start
+
+                # Sanity check - should never be negative if parsing is correct
+                if data_offset_in_raw < 0:
+                    raise DNP3ProtocolError(
+                        f"Internal error: computed negative data offset {data_offset_in_raw} "
+                        f"for object g{obj_header.group}v{obj_header.variation}"
+                    )
+
+                obj_header.data_offset = data_offset_in_raw
                 objects.append(obj_header)
-                offset += header_consumed + data_size
+                offset += total_object_size
 
-            except DNP3ObjectError:
-                break  # No more valid object headers
+            except DNP3ObjectError as e:
+                # Log and break - no more valid object headers
+                break
 
         return cls(
             function=function,
@@ -369,6 +429,8 @@ class ApplicationResponse:
             confirm_required=confirm_required,
             unsolicited=unsolicited,
             iin=iin,
+            iin1=iin1,
+            iin2=iin2,
             objects=objects,
             raw_data=data[4:],
         )
@@ -418,19 +480,34 @@ class ApplicationResponse:
         # For indexed qualifiers, the size includes index prefixes
         if qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
             # Each object has 1-byte index prefix
-            base_size = get_object_size(group, variation) or 0
+            base_size = get_object_size(group, variation)
+            if base_size is None:
+                raise DNP3ObjectError(
+                    f"Unknown object size for indexed qualifier: group={group}, variation={variation}"
+                )
             return count * (1 + base_size)
         elif qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
             # Each object has 2-byte index prefix
-            base_size = get_object_size(group, variation) or 0
+            base_size = get_object_size(group, variation)
+            if base_size is None:
+                raise DNP3ObjectError(
+                    f"Unknown object size for indexed qualifier: group={group}, variation={variation}"
+                )
             return count * (2 + base_size)
         elif qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
             # Each object has 2-byte index prefix
-            base_size = get_object_size(group, variation) or 0
+            base_size = get_object_size(group, variation)
+            if base_size is None:
+                raise DNP3ObjectError(
+                    f"Unknown object size for indexed qualifier: group={group}, variation={variation}"
+                )
             return count * (2 + base_size)
 
-        # Unknown size - return 0 and let caller handle
-        return 0
+        # Unknown size - refuse to guess to avoid misaligned parsing
+        raise DNP3ObjectError(
+            f"Unknown or variable object size without parser support: "
+            f"group={group}, variation={variation}, qualifier=0x{qualifier:02X}"
+        )
 
     def __repr__(self) -> str:
         flags = []
