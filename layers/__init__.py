@@ -1,7 +1,7 @@
 """DNP3 protocol layer implementations."""
 
-from dnp3_driver.layers.datalink import DataLinkLayer
-from dnp3_driver.layers.transport import TransportLayer
-from dnp3_driver.layers.application import ApplicationLayer
+from pydnp3.layers.datalink import DataLinkLayer
+from pydnp3.layers.transport import TransportLayer
+from pydnp3.layers.application import ApplicationLayer
 
 __all__ = ["DataLinkLayer", "TransportLayer", "ApplicationLayer"]

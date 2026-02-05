@@ -202,6 +202,10 @@ class IINFlags:
             self.config_corrupt
         )
 
+    def has_reserved_bits(self) -> bool:
+        """Check if any reserved IIN bits are set."""
+        return self.reserved_2_6 or self.reserved_2_7
+
 
 @dataclass
 class DNP3Config:
@@ -212,8 +216,8 @@ class DNP3Config:
     port: int = 20000
 
     # DNP3 addressing
-    master_address: int = 1       # Master station address (0-65519)
-    outstation_address: int = 10  # Outstation address (0-65519)
+    master_address: int = 1       # Master station address (0-65534)
+    outstation_address: int = 10  # Outstation address (0-65534)
 
     # Timing settings (in seconds)
     response_timeout: float = 5.0
@@ -243,11 +247,25 @@ class DNP3Config:
     log_raw_frames: bool = False
 
     def validate(self) -> None:
-        """Validate configuration values."""
-        if not 0 <= self.master_address <= 65519:
-            raise ValueError(f"Master address must be 0-65519, got {self.master_address}")
-        if not 0 <= self.outstation_address <= 65519:
-            raise ValueError(f"Outstation address must be 0-65519, got {self.outstation_address}")
+        """Validate configuration values.
+
+        DNP3 addressing rules:
+        - Valid range: 0-65519 (0x0000-0xFFEF)
+        - Reserved: 65520-65534 (0xFFF0-0xFFFE) for special purposes
+        - Broadcast: 65535 (0xFFFF) - not valid for master/outstation addresses
+        """
+        # DNP3 reserves addresses 65520-65535 for special purposes
+        MAX_VALID_ADDRESS = 65519
+        if not 0 <= self.master_address <= MAX_VALID_ADDRESS:
+            raise ValueError(
+                f"Master address must be 0-65519 (0xFFEF), got {self.master_address}. "
+                f"Addresses 65520-65535 are reserved."
+            )
+        if not 0 <= self.outstation_address <= MAX_VALID_ADDRESS:
+            raise ValueError(
+                f"Outstation address must be 0-65519 (0xFFEF), got {self.outstation_address}. "
+                f"Addresses 65520-65535 are reserved."
+            )
         if not 1 <= self.port <= 65535:
             raise ValueError(f"Port must be 1-65535, got {self.port}")
         if self.max_frame_size > 250:

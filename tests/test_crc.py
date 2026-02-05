@@ -1,7 +1,7 @@
 """Tests for DNP3 CRC-16 calculation."""
 
 import pytest
-from dnp3_driver.utils.crc import CRC16DNP3
+from pydnp3.utils.crc import CRC16DNP3
 
 
 class TestCRC16DNP3:

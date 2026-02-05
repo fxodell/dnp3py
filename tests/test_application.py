@@ -1,7 +1,7 @@
 """Tests for DNP3 Application Layer."""
 
 import pytest
-from dnp3_driver.layers.application import (
+from pydnp3.layers.application import (
     ApplicationLayer,
     ApplicationRequest,
     ApplicationResponse,
@@ -9,8 +9,8 @@ from dnp3_driver.layers.application import (
     FIR_FLAG,
     FIN_FLAG,
 )
-from dnp3_driver.core.config import AppLayerFunction, QualifierCode, IINFlags
-from dnp3_driver.core.exceptions import DNP3ProtocolError
+from pydnp3.core.config import AppLayerFunction, QualifierCode, IINFlags
+from pydnp3.core.exceptions import DNP3ProtocolError, DNP3ObjectError
 
 
 class TestObjectHeader:
@@ -83,6 +83,24 @@ class TestObjectHeader:
         assert header.range_stop == 10
         assert header.count == 6  # 10 - 5 + 1
         assert consumed == 5
+
+    def test_from_bytes_invalid_range(self):
+        """Test parsing header with invalid range raises error."""
+        data = bytes([1, 2, QualifierCode.UINT8_START_STOP, 10, 5])
+        with pytest.raises(DNP3ObjectError):
+            ObjectHeader.from_bytes(data)
+
+    def test_to_bytes_invalid_range(self):
+        """Test serialization with invalid range raises error."""
+        header = ObjectHeader(
+            group=1,
+            variation=2,
+            qualifier=QualifierCode.UINT16_START_STOP,
+            range_start=10,
+            range_stop=1,
+        )
+        with pytest.raises(DNP3ObjectError):
+            header.to_bytes()
 
     def test_from_bytes_with_offset(self):
         """Test parsing header at offset."""
@@ -193,6 +211,18 @@ class TestApplicationResponse:
         data = bytes([0xC0, 0x81, 0x00])  # Missing IIN2
         with pytest.raises(DNP3ProtocolError):
             ApplicationResponse.from_bytes(data)
+
+    def test_from_bytes_invalid_function(self):
+        """Test parsing response with invalid function code."""
+        data = bytes([0xC0, 0x05, 0x00, 0x00])  # Function code is request
+        with pytest.raises(DNP3ProtocolError):
+            ApplicationResponse.from_bytes(data)
+
+    def test_from_bytes_reserved_iin_bits(self):
+        """Test parsing response with reserved IIN bits set."""
+        data = bytes([0xC0, 0x81, 0x00, 0x40])  # IIN2 reserved bit 6 set
+        response = ApplicationResponse.from_bytes(data)
+        assert response.iin.has_reserved_bits() is True
 
     def test_confirm_required_flag(self):
         """Test confirm required parsing."""

@@ -12,8 +12,8 @@ import time
 # Add parent directory to path for imports
 sys.path.insert(0, "../..")
 
-from dnp3_driver import DNP3Master, DNP3Config
-from dnp3_driver.utils.logging import setup_logging
+from pydnp3 import DNP3Master, DNP3Config
+from pydnp3.utils.logging import setup_logging
 
 
 def basic_read_example():

@@ -52,11 +52,18 @@ class CRC16DNP3:
         Calculate DNP3 CRC-16 for the given data.
 
         Args:
-            data: Bytes to calculate CRC for
+            data: Bytes to calculate CRC for (must not be empty for meaningful CRC)
 
         Returns:
             16-bit CRC value (inverted as per DNP3 spec)
+
+        Note:
+            An empty input returns 0xFFFF (the final XOR value with no data).
+            This is technically correct but may indicate a usage error.
         """
+        if data is None:
+            raise ValueError("CRC input data cannot be None")
+
         table = cls._init_table()
         crc = 0x0000
 
@@ -105,7 +112,14 @@ class CRC16DNP3:
 
         Returns:
             True if CRC matches, False otherwise
+
+        Raises:
+            ValueError: If crc_bytes is not exactly 2 bytes
         """
+        if crc_bytes is None or len(crc_bytes) != 2:
+            raise ValueError(
+                f"CRC bytes must be exactly 2 bytes, got {len(crc_bytes) if crc_bytes else 'None'}"
+            )
         expected = crc_bytes[0] | (crc_bytes[1] << 8)
         return cls.verify(data, expected)
 

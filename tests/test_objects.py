@@ -2,7 +2,7 @@
 
 import pytest
 import struct
-from dnp3_driver.objects.binary import (
+from pydnp3.objects.binary import (
     BinaryInput,
     BinaryOutput,
     BinaryOutputCommand,
@@ -10,15 +10,15 @@ from dnp3_driver.objects.binary import (
     parse_binary_inputs,
     parse_binary_outputs,
 )
-from dnp3_driver.objects.analog import (
+from pydnp3.objects.analog import (
     AnalogInput,
     AnalogOutput,
     AnalogOutputCommand,
     AnalogFlags,
     parse_analog_inputs,
 )
-from dnp3_driver.objects.counter import Counter, CounterFlags, parse_counters
-from dnp3_driver.core.config import ControlCode, ControlStatus
+from pydnp3.objects.counter import Counter, CounterFlags, parse_counters
+from pydnp3.core.config import ControlCode, ControlStatus
 
 
 class TestBinaryInput:
@@ -145,6 +145,16 @@ class TestBinaryOutputCommand:
 
         cmd = BinaryOutputCommand.pulse_off(0, 100)
         assert cmd.operation == "PULSE_OFF"
+
+    def test_invalid_control_code_base(self):
+        """Test invalid control code base raises error."""
+        with pytest.raises(ValueError):
+            BinaryOutputCommand(index=0, control_code=0x09)
+
+    def test_invalid_control_code_trip_close(self):
+        """Test invalid trip/close combination raises error."""
+        with pytest.raises(ValueError):
+            BinaryOutputCommand(index=0, control_code=ControlCode.TRIP_CLOSE_TRIP | ControlCode.TRIP_CLOSE_CLOSE)
 
 
 class TestAnalogInput:

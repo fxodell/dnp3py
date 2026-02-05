@@ -27,9 +27,9 @@ References:
     - DNP3 Technical Bulletin TB2004-001
 """
 
-from dnp3_driver.core.master import DNP3Master
-from dnp3_driver.core.config import DNP3Config
-from dnp3_driver.core.exceptions import (
+from pydnp3.core.master import DNP3Master
+from pydnp3.core.config import DNP3Config
+from pydnp3.core.exceptions import (
     DNP3Error,
     DNP3CommunicationError,
     DNP3TimeoutError,

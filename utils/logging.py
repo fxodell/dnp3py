@@ -31,7 +31,7 @@ def setup_logging(
         log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     # Create logger
-    logger = logging.getLogger("dnp3_driver")
+    logger = logging.getLogger("pydnp3")
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
 
     # Clear existing handlers

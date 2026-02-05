@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="dnp3_driver",
+    name="pydnp3",
     version="1.0.0",
     description="A pure Python DNP3 protocol driver for SCADA communication",
     author="DNP3 Driver Development",

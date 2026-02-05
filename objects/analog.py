@@ -14,7 +14,7 @@ from typing import Optional, List, Union
 from enum import IntFlag
 import struct
 
-from dnp3_driver.core.config import ControlStatus
+from pydnp3.core.config import ControlStatus
 
 
 class AnalogFlags(IntFlag):
@@ -102,27 +102,62 @@ class AnalogInput:
         return cls(index=index, value=value, flags=flags)
 
     def to_bytes(self, variation: int = 1) -> bytes:
-        """Serialize to bytes."""
+        """Serialize to bytes.
+
+        Args:
+            variation: Object variation to serialize as
+
+        Returns:
+            Serialized bytes
+
+        Raises:
+            ValueError: If value is out of range for the specified variation
+        """
         result = bytearray()
 
+        # Get integer value with range checking
+        int_val = int(self.value)
+
         if variation == 1:
+            # 32-bit signed with flag
+            if not -2147483648 <= int_val <= 2147483647:
+                raise ValueError(
+                    f"Value {int_val} out of range for 32-bit signed integer"
+                )
             result.append(self.flags)
-            result.extend(struct.pack("<i", int(self.value)))
+            result.extend(struct.pack("<i", int_val))
         elif variation == 2:
+            # 16-bit signed with flag
+            if not -32768 <= int_val <= 32767:
+                raise ValueError(
+                    f"Value {int_val} out of range for 16-bit signed integer"
+                )
             result.append(self.flags)
-            result.extend(struct.pack("<h", int(self.value)))
+            result.extend(struct.pack("<h", int_val))
         elif variation == 3:
-            result.extend(struct.pack("<i", int(self.value)))
+            # 32-bit signed without flag
+            if not -2147483648 <= int_val <= 2147483647:
+                raise ValueError(
+                    f"Value {int_val} out of range for 32-bit signed integer"
+                )
+            result.extend(struct.pack("<i", int_val))
         elif variation == 4:
-            result.extend(struct.pack("<h", int(self.value)))
+            # 16-bit signed without flag
+            if not -32768 <= int_val <= 32767:
+                raise ValueError(
+                    f"Value {int_val} out of range for 16-bit signed integer"
+                )
+            result.extend(struct.pack("<h", int_val))
         elif variation == 5:
+            # 32-bit float with flag
             result.append(self.flags)
             result.extend(struct.pack("<f", float(self.value)))
         elif variation == 6:
+            # 64-bit double with flag
             result.append(self.flags)
             result.extend(struct.pack("<d", float(self.value)))
         else:
-            raise ValueError(f"Unsupported variation: {variation}")
+            raise ValueError(f"Unsupported analog input variation: {variation}")
 
         return bytes(result)
 
@@ -241,17 +276,25 @@ class AnalogOutputCommand:
         status = ControlStatus.SUCCESS
 
         if variation == 1:
+            if len(data) < 5:
+                raise ValueError(f"Analog output command data too short: {len(data)} < 5")
             value = struct.unpack("<i", data[:4])[0]
-            status = data[4] if len(data) > 4 else 0
+            status = data[4]
         elif variation == 2:
+            if len(data) < 3:
+                raise ValueError(f"Analog output command data too short: {len(data)} < 3")
             value = struct.unpack("<h", data[:2])[0]
-            status = data[2] if len(data) > 2 else 0
+            status = data[2]
         elif variation == 3:
+            if len(data) < 5:
+                raise ValueError(f"Analog output command data too short: {len(data)} < 5")
             value = struct.unpack("<f", data[:4])[0]
-            status = data[4] if len(data) > 4 else 0
+            status = data[4]
         elif variation == 4:
+            if len(data) < 9:
+                raise ValueError(f"Analog output command data too short: {len(data)} < 9")
             value = struct.unpack("<d", data[:8])[0]
-            status = data[8] if len(data) > 8 else 0
+            status = data[8]
         else:
             raise ValueError(f"Unsupported variation: {variation}")
 

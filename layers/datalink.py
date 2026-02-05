@@ -22,8 +22,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 from enum import IntFlag
 
-from dnp3_driver.utils.crc import CRC16DNP3
-from dnp3_driver.core.exceptions import DNP3CRCError, DNP3FrameError
+from pydnp3.utils.crc import CRC16DNP3
+from pydnp3.core.exceptions import DNP3CRCError, DNP3FrameError
 
 
 # DNP3 Frame constants
@@ -120,6 +120,10 @@ class DataLinkLayer:
     Handles frame construction and parsing according to DNP3 FT3 frame format.
     """
 
+    # DNP3 address limits
+    MAX_VALID_ADDRESS = 65519  # 0xFFEF - addresses 65520-65535 are reserved
+    BROADCAST_ADDRESS = 65535  # 0xFFFF - broadcast address
+
     def __init__(self, master_address: int = 1, outstation_address: int = 10):
         """
         Initialize Data Link Layer.
@@ -127,10 +131,40 @@ class DataLinkLayer:
         Args:
             master_address: Local master station address (0-65519)
             outstation_address: Remote outstation address (0-65519)
+
+        Raises:
+            ValueError: If addresses are outside valid range
         """
+        self._validate_address(master_address, "Master")
+        self._validate_address(outstation_address, "Outstation")
         self.master_address = master_address
         self.outstation_address = outstation_address
         self._fcb = False  # Frame Count Bit toggle
+
+    @classmethod
+    def _validate_address(cls, address: int, name: str) -> None:
+        """Validate a DNP3 address.
+
+        Args:
+            address: Address to validate
+            name: Name for error messages
+
+        Raises:
+            ValueError: If address is invalid
+        """
+        if not isinstance(address, int):
+            raise ValueError(f"{name} address must be an integer, got {type(address).__name__}")
+        if address < 0:
+            raise ValueError(f"{name} address must be non-negative, got {address}")
+        if address > cls.MAX_VALID_ADDRESS:
+            if address == cls.BROADCAST_ADDRESS:
+                raise ValueError(
+                    f"{name} address cannot be broadcast address (65535/0xFFFF)"
+                )
+            raise ValueError(
+                f"{name} address must be 0-65519 (0xFFEF), got {address}. "
+                f"Addresses 65520-65535 are reserved."
+            )
 
     def build_frame(
         self,
@@ -163,8 +197,13 @@ class DataLinkLayer:
 
         if destination is None:
             destination = self.outstation_address
+        else:
+            self._validate_address(destination, "Destination")
+
         if source is None:
             source = self.master_address
+        else:
+            self._validate_address(source, "Source")
 
         # Build control byte
         control = ControlByte.DIR | ControlByte.PRM  # Master to outstation, primary

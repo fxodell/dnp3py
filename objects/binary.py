@@ -13,8 +13,8 @@ from typing import Optional, List
 from enum import IntFlag
 import struct
 
-from dnp3_driver.core.config import ControlCode, ControlStatus
-from dnp3_driver.objects.groups import ObjectGroup, ObjectVariation
+from pydnp3.core.config import ControlCode, ControlStatus
+from pydnp3.objects.groups import ObjectGroup, ObjectVariation
 
 
 class BinaryFlags(IntFlag):
@@ -66,26 +66,72 @@ class BinaryInput:
         Args:
             data: Raw bytes
             index: Point index
-            variation: Object variation
+            variation: Object variation (1, 2 for Group 1; 1, 2, 3 for Group 2 events)
 
         Returns:
             Parsed BinaryInput
+
+        Supported variations:
+            Group 1 (Binary Input):
+                - Variation 1: Packed format (1 bit per point)
+                - Variation 2: With flags (1 byte)
+
+            Group 2 (Binary Input Event):
+                - Variation 1: Without time (1 byte flags)
+                - Variation 2: With absolute time (1 byte flags + 6 bytes time)
+                - Variation 3: With relative time (1 byte flags + 2 bytes time)
         """
+        timestamp = None
+
         if variation == 1:
-            # Packed format - single bit
-            value = bool(data[0] & 0x01)
-            flags = BinaryFlags.ONLINE
+            # Packed format (Group 1 Var 1) - single bit
+            # Note: Group 2 Var 1 uses a flags byte, but in this codebase
+            # packed interpretation is the default for variation 1.
+            if len(data) >= 1:
+                value = bool(data[0] & 0x01)
+                flags = BinaryFlags.ONLINE
+            else:
+                value = False
+                flags = BinaryFlags.ONLINE
         elif variation == 2:
-            # With flags format
+            # With flags format (Group 1/2 Var 2)
+            # Or event with absolute time (Group 2 Var 2)
+            if len(data) < 1:
+                raise ValueError("Insufficient data for binary input variation 2")
             flags = data[0]
             value = bool(flags & BinaryFlags.STATE)
-        else:
-            raise ValueError(f"Unsupported variation: {variation}")
 
-        return cls(index=index, value=value, flags=flags)
+            # Check for timestamp (Group 2 Var 2: 1 + 6 = 7 bytes)
+            if len(data) >= 7:
+                # 48-bit timestamp in milliseconds since epoch (little-endian)
+                timestamp = int.from_bytes(data[1:7], "little")
+        elif variation == 3:
+            # Event with relative time (Group 2 Var 3: 1 + 2 = 3 bytes)
+            if len(data) < 3:
+                raise ValueError("Insufficient data for binary input event variation 3")
+            flags = data[0]
+            value = bool(flags & BinaryFlags.STATE)
+            # 16-bit relative timestamp in milliseconds
+            timestamp = int.from_bytes(data[1:3], "little")
+        else:
+            raise ValueError(f"Unsupported binary input variation: {variation}")
+
+        return cls(index=index, value=value, flags=flags, timestamp=timestamp)
 
     def to_bytes(self, variation: int = 2) -> bytes:
-        """Serialize to bytes."""
+        """Serialize to bytes.
+
+        Args:
+            variation: Object variation to serialize as
+
+        Returns:
+            Serialized bytes
+
+        Supported variations:
+            1: Packed format (1 byte with LSB as value)
+            2: With flags (1 byte) or with absolute time (7 bytes if timestamp set)
+            3: With flags and relative time (3 bytes)
+        """
         if variation == 1:
             return bytes([0x01 if self.value else 0x00])
         elif variation == 2:
@@ -94,14 +140,38 @@ class BinaryInput:
                 flags |= BinaryFlags.STATE
             else:
                 flags &= ~BinaryFlags.STATE
-            return bytes([flags])
+
+            result = bytearray([flags])
+
+            # Include timestamp if present (for events)
+            if self.timestamp is not None:
+                # 48-bit absolute timestamp
+                result.extend(self.timestamp.to_bytes(6, "little"))
+
+            return bytes(result)
+        elif variation == 3:
+            # Event with relative time
+            flags = self.flags
+            if self.value:
+                flags |= BinaryFlags.STATE
+            else:
+                flags &= ~BinaryFlags.STATE
+
+            result = bytearray([flags])
+
+            # 16-bit relative timestamp
+            ts = self.timestamp if self.timestamp is not None else 0
+            result.extend((ts & 0xFFFF).to_bytes(2, "little"))
+
+            return bytes(result)
         else:
-            raise ValueError(f"Unsupported variation: {variation}")
+            raise ValueError(f"Unsupported binary input variation: {variation}")
 
     def __repr__(self) -> str:
         state = "ON" if self.value else "OFF"
         online = "online" if self.is_online else "offline"
-        return f"BinaryInput(idx={self.index}, {state}, {online})"
+        ts_str = f", ts={self.timestamp}" if self.timestamp is not None else ""
+        return f"BinaryInput(idx={self.index}, {state}, {online}{ts_str})"
 
 
 @dataclass
@@ -163,6 +233,31 @@ class BinaryOutputCommand:
     on_time: int = 0       # Milliseconds for pulse on
     off_time: int = 0      # Milliseconds for pulse off
     status: int = ControlStatus.SUCCESS
+
+    def __post_init__(self) -> None:
+        """Validate control code combinations."""
+        base_op = self.control_code & 0x0F
+        allowed_base_ops = {
+            ControlCode.NUL,
+            ControlCode.PULSE_ON,
+            ControlCode.PULSE_OFF,
+            ControlCode.LATCH_ON,
+            ControlCode.LATCH_OFF,
+        }
+        if base_op not in allowed_base_ops:
+            raise ValueError(f"Invalid CROB base control code: 0x{base_op:02X}")
+
+        allowed_flags = (
+            ControlCode.QUEUE |
+            ControlCode.CLEAR |
+            ControlCode.TRIP_CLOSE_TRIP |
+            ControlCode.TRIP_CLOSE_CLOSE
+        )
+        if self.control_code & ~allowed_flags & 0xF0:
+            raise ValueError(f"Invalid CROB control flag bits: 0x{self.control_code:02X}")
+
+        if (self.control_code & 0xC0) == 0xC0:
+            raise ValueError("Invalid CROB control code: TRIP and CLOSE both set")
 
     @property
     def operation(self) -> str:
@@ -268,12 +363,32 @@ def parse_binary_inputs(
 
     Returns:
         List of BinaryInput objects
+
+    Supported variations:
+        Group 1 (Binary Input):
+            - Variation 1: Packed format (1 bit per point)
+            - Variation 2: With flags (1 byte per point)
+
+        Group 2 (Binary Input Event):
+            - Variation 1: Without time (1 byte per point)
+            - Variation 2: With absolute time (7 bytes per point)
+            - Variation 3: With relative time (3 bytes per point)
     """
     inputs = []
     offset = 0
 
+    # Size per object based on variation
+    # Variation 1 is packed (handled specially), variations 2/3 are fixed sizes
+    variation_sizes = {
+        1: 1,  # Flags only (or packed - handled separately)
+        2: 7,  # Flags + 48-bit absolute time (for events) or just flags (for static)
+        3: 3,  # Flags + 16-bit relative time
+    }
+
     if variation == 1:
-        # Packed format - 8 bits per byte
+        # Packed format - 8 bits per byte (Group 1 Var 1)
+        # OR 1 byte flags per point (Group 2 Var 1)
+        # We assume packed format here (Group 1), as Group 2 Var 1 uses 1 byte per point
         for i in range(count):
             byte_idx = i // 8
             bit_idx = i % 8
@@ -288,12 +403,33 @@ def parse_binary_inputs(
                 flags=BinaryFlags.ONLINE,
             ))
     elif variation == 2:
-        # With flags - 1 byte per point
+        # Could be Group 1 Var 2 (1 byte) or Group 2 Var 2 (7 bytes)
+        # Determine size based on data available
+        obj_size = 1  # Default for Group 1 Var 2
+
+        # Check if we have enough data for event format (7 bytes per point)
+        if len(data) >= count * 7:
+            obj_size = 7  # Group 2 Var 2 with timestamp
+        elif len(data) >= count * 1:
+            obj_size = 1  # Group 1 Var 2 without timestamp
+
         for i in range(count):
-            if offset >= len(data):
+            if offset + obj_size > len(data):
                 break
-            inputs.append(BinaryInput.from_bytes(data[offset:offset + 1], start_index + i, variation))
-            offset += 1
+            inputs.append(BinaryInput.from_bytes(
+                data[offset:offset + obj_size], start_index + i, variation
+            ))
+            offset += obj_size
+    elif variation == 3:
+        # Group 2 Var 3: Event with relative time (3 bytes per point)
+        obj_size = 3
+        for i in range(count):
+            if offset + obj_size > len(data):
+                break
+            inputs.append(BinaryInput.from_bytes(
+                data[offset:offset + obj_size], start_index + i, variation
+            ))
+            offset += obj_size
     else:
         raise ValueError(f"Unsupported binary input variation: {variation}")
 

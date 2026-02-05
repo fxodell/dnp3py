@@ -1,14 +1,14 @@
 """Tests for DNP3 Transport Layer."""
 
 import pytest
-from dnp3_driver.layers.transport import (
+from pydnp3.layers.transport import (
     TransportLayer,
     TransportSegment,
     MAX_SEGMENT_PAYLOAD,
     FIR_FLAG,
     FIN_FLAG,
 )
-from dnp3_driver.core.exceptions import DNP3FrameError
+from pydnp3.core.exceptions import DNP3FrameError
 
 
 class TestTransportSegment:
@@ -191,6 +191,21 @@ class TestTransportLayer:
         with pytest.raises(DNP3FrameError):
             self.layer.reassemble(segments[2])
 
+    def test_reassemble_duplicate_segment(self):
+        """Test that duplicate segment is ignored."""
+        apdu = bytes(300)
+        segments = self.layer.segment(apdu)
+
+        # Start with first segment
+        result, complete = self.layer.reassemble(segments[0])
+        assert complete is False
+        assert result is None
+
+        # Duplicate first segment should be ignored
+        result, complete = self.layer.reassemble(segments[0])
+        assert complete is False
+        assert result is None
+
     def test_reassemble_continuation_without_first(self):
         """Test that continuation segment without first raises error."""
         # Create a middle segment (no FIR)
@@ -249,7 +264,7 @@ class TestTransportLayer:
 
     def test_reassemble_message_size_limit(self):
         """Test message size limit protection during reassembly."""
-        from dnp3_driver.layers.transport import MAX_MESSAGE_SIZE
+        from pydnp3.layers.transport import MAX_MESSAGE_SIZE
 
         # Start with first segment
         first_segment = TransportSegment(
@@ -283,3 +298,17 @@ class TestTransportLayer:
 
         with pytest.raises(DNP3FrameError, match="exceeds size limit"):
             self.layer.reassemble(oversized_segment.to_bytes())
+
+    def test_reassemble_timeout(self):
+        """Test reassembly timeout handling."""
+        apdu = bytes(300)
+        segments = self.layer.segment(apdu)
+
+        # Start receiving with a short timeout
+        self.layer.reassemble(segments[0], timeout_seconds=0.01)
+
+        # Simulate timeout expiry
+        self.layer._rx_start_time -= 1.0
+
+        with pytest.raises(DNP3FrameError, match="timeout"):
+            self.layer.reassemble(segments[1], timeout_seconds=0.01)

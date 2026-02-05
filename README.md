@@ -26,16 +26,16 @@ This driver implements the DNP3 protocol stack to communicate with DNP3 outstati
 ## Installation
 
 ```bash
-# Clone or copy the dnp3_driver directory to your project
-pip install -e dnp3_driver/
+# Clone or copy the pydnp3 directory to your project
+pip install -e pydnp3/
 ```
 
-Or simply add the dnp3_driver directory to your Python path.
+Or simply add the pydnp3 directory to your Python path.
 
 ## Quick Start
 
 ```python
-from dnp3_driver import DNP3Master, DNP3Config
+from pydnp3 import DNP3Master, DNP3Config
 
 # Configure connection
 config = DNP3Config(
@@ -73,7 +73,7 @@ with master.connect():
 ## Architecture
 
 ```
-dnp3_driver/
+pydnp3/
 ├── __init__.py           # Package exports
 ├── core/
 │   ├── master.py         # DNP3Master class (main interface)
@@ -188,7 +188,7 @@ master.pulse_binary(
 ## Exception Handling
 
 ```python
-from dnp3_driver import (
+from pydnp3 import (
     DNP3Error,
     DNP3CommunicationError,
     DNP3TimeoutError,
@@ -212,7 +212,7 @@ except DNP3Error as e:
 ## Running Tests
 
 ```bash
-cd dnp3_driver
+cd pydnp3
 pytest tests/ -v
 ```
 

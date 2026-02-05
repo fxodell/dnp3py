@@ -14,9 +14,9 @@ from typing import Optional
 
 sys.path.insert(0, "../..")
 
-from dnp3_driver import DNP3Master, DNP3Config
-from dnp3_driver.core.config import IINFlags
-from dnp3_driver.utils.logging import setup_logging
+from pydnp3 import DNP3Master, DNP3Config
+from pydnp3.core.config import IINFlags
+from pydnp3.utils.logging import setup_logging
 
 
 class DNP3PollingClient:

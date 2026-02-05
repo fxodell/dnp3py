@@ -23,12 +23,12 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Any
 from enum import IntEnum
 
-from dnp3_driver.core.config import (
+from pydnp3.core.config import (
     AppLayerFunction,
     QualifierCode,
     IINFlags,
 )
-from dnp3_driver.core.exceptions import DNP3ProtocolError, DNP3ObjectError
+from pydnp3.core.exceptions import DNP3ProtocolError, DNP3ObjectError
 
 
 # Application control byte flags
@@ -459,7 +459,7 @@ class ApplicationResponse:
             Size of object data in bytes
         """
         # Import here to avoid circular dependency
-        from dnp3_driver.objects.groups import get_object_size
+        from pydnp3.objects.groups import get_object_size
 
         if count == 0:
             return 0

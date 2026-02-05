@@ -104,31 +104,81 @@ class Counter:
         return cls(index=index, value=value, flags=flags)
 
     def to_bytes(self, variation: int = 1) -> bytes:
-        """Serialize to bytes."""
+        """Serialize to bytes.
+
+        Args:
+            variation: Object variation to serialize as
+
+        Returns:
+            Serialized bytes
+
+        Raises:
+            ValueError: If value is out of range for the specified variation
+        """
         result = bytearray()
 
         if variation == 1:
+            # 32-bit unsigned with flag
+            if not 0 <= self.value <= 4294967295:
+                raise ValueError(
+                    f"Value {self.value} out of range for 32-bit unsigned counter (0-4294967295)"
+                )
             result.append(self.flags)
             result.extend(struct.pack("<I", self.value))
         elif variation == 2:
+            # 16-bit unsigned with flag
+            if not 0 <= self.value <= 65535:
+                raise ValueError(
+                    f"Value {self.value} out of range for 16-bit unsigned counter (0-65535)"
+                )
             result.append(self.flags)
-            result.extend(struct.pack("<H", self.value & 0xFFFF))
+            result.extend(struct.pack("<H", self.value))
         elif variation == 3:
+            # 32-bit signed delta with flag
+            if not -2147483648 <= self.value <= 2147483647:
+                raise ValueError(
+                    f"Value {self.value} out of range for 32-bit signed delta"
+                )
             result.append(self.flags)
             result.extend(struct.pack("<i", self.value))
         elif variation == 4:
+            # 16-bit signed delta with flag
+            if not -32768 <= self.value <= 32767:
+                raise ValueError(
+                    f"Value {self.value} out of range for 16-bit signed delta"
+                )
             result.append(self.flags)
-            result.extend(struct.pack("<h", self.value & 0xFFFF))
+            result.extend(struct.pack("<h", self.value))
         elif variation == 5:
+            # 32-bit unsigned without flag
+            if not 0 <= self.value <= 4294967295:
+                raise ValueError(
+                    f"Value {self.value} out of range for 32-bit unsigned counter (0-4294967295)"
+                )
             result.extend(struct.pack("<I", self.value))
         elif variation == 6:
-            result.extend(struct.pack("<H", self.value & 0xFFFF))
+            # 16-bit unsigned without flag
+            if not 0 <= self.value <= 65535:
+                raise ValueError(
+                    f"Value {self.value} out of range for 16-bit unsigned counter (0-65535)"
+                )
+            result.extend(struct.pack("<H", self.value))
         elif variation == 7:
+            # 32-bit signed delta without flag
+            if not -2147483648 <= self.value <= 2147483647:
+                raise ValueError(
+                    f"Value {self.value} out of range for 32-bit signed delta"
+                )
             result.extend(struct.pack("<i", self.value))
         elif variation == 8:
-            result.extend(struct.pack("<h", self.value & 0xFFFF))
+            # 16-bit signed delta without flag
+            if not -32768 <= self.value <= 32767:
+                raise ValueError(
+                    f"Value {self.value} out of range for 16-bit signed delta"
+                )
+            result.extend(struct.pack("<h", self.value))
         else:
-            raise ValueError(f"Unsupported variation: {variation}")
+            raise ValueError(f"Unsupported counter variation: {variation}")
 
         return bytes(result)
 

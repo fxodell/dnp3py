@@ -12,14 +12,14 @@ from typing import Optional, List, Callable, Union
 from dataclasses import dataclass, field
 from contextlib import contextmanager
 
-from dnp3_driver.core.config import (
+from pydnp3.core.config import (
     DNP3Config,
     AppLayerFunction,
     QualifierCode,
     IINFlags,
     ControlStatus,
 )
-from dnp3_driver.core.exceptions import (
+from pydnp3.core.exceptions import (
     DNP3Error,
     DNP3CommunicationError,
     DNP3TimeoutError,
@@ -28,30 +28,30 @@ from dnp3_driver.core.exceptions import (
     DNP3FrameError,
     DNP3ControlError,
 )
-from dnp3_driver.layers.datalink import DataLinkLayer, DataLinkFrame
-from dnp3_driver.layers.transport import TransportLayer
-from dnp3_driver.layers.application import (
+from pydnp3.layers.datalink import DataLinkLayer, DataLinkFrame
+from pydnp3.layers.transport import TransportLayer
+from pydnp3.layers.application import (
     ApplicationLayer,
     ApplicationResponse,
     ObjectHeader,
 )
-from dnp3_driver.objects.binary import (
+from pydnp3.objects.binary import (
     BinaryInput,
     BinaryOutput,
     BinaryOutputCommand,
     parse_binary_inputs,
     parse_binary_outputs,
 )
-from dnp3_driver.objects.analog import (
+from pydnp3.objects.analog import (
     AnalogInput,
     AnalogOutput,
     AnalogOutputCommand,
     parse_analog_inputs,
     parse_analog_outputs,
 )
-from dnp3_driver.objects.counter import Counter, parse_counters
-from dnp3_driver.objects.groups import ObjectGroup, get_object_size
-from dnp3_driver.utils.logging import get_logger, log_frame
+from pydnp3.objects.counter import Counter, parse_counters
+from pydnp3.objects.groups import ObjectGroup, get_object_size
+from pydnp3.utils.logging import get_logger, log_frame
 
 
 @dataclass
