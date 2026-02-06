@@ -85,14 +85,10 @@ class BinaryInput:
 
         if variation == 1:
             # Packed format (Group 1 Var 1) - single bit
-            # Note: Group 2 Var 1 uses a flags byte, but in this codebase
-            # packed interpretation is the default for variation 1.
-            if len(data) >= 1:
-                value = bool(data[0] & 0x01)
-                flags = BinaryFlags.ONLINE
-            else:
-                value = False
-                flags = BinaryFlags.ONLINE
+            if len(data) < 1:
+                raise ValueError("Insufficient data for binary input variation 1: need 1 byte")
+            value = bool(data[0] & 0x01)
+            flags = BinaryFlags.ONLINE
         elif variation == 2:
             # With flags format (Group 1/2 Var 2)
             # Or event with absolute time (Group 2 Var 2)
@@ -145,8 +141,12 @@ class BinaryInput:
 
             # Include timestamp if present (for events)
             if self.timestamp is not None:
-                # 48-bit absolute timestamp
-                result.extend(self.timestamp.to_bytes(6, "little"))
+                ts = int(self.timestamp)
+                if ts < 0 or ts > (1 << 48) - 1:
+                    raise ValueError(
+                        f"Timestamp for variation 2 must be 0 to 2^48-1, got {self.timestamp}"
+                    )
+                result.extend(ts.to_bytes(6, "little"))
 
             return bytes(result)
         elif variation == 3:
@@ -160,8 +160,12 @@ class BinaryInput:
             result = bytearray([flags])
 
             # 16-bit relative timestamp
-            ts = self.timestamp if self.timestamp is not None else 0
-            result.extend((ts & 0xFFFF).to_bytes(2, "little"))
+            ts = int(self.timestamp) if self.timestamp is not None else 0
+            if ts < 0 or ts > 0xFFFF:
+                raise ValueError(
+                    f"Relative timestamp for variation 3 must be 0 to 65535, got {self.timestamp}"
+                )
+            result.extend(ts.to_bytes(2, "little"))
 
             return bytes(result)
         else:
@@ -188,11 +192,19 @@ class BinaryOutput:
 
     @classmethod
     def from_bytes(cls, data: bytes, index: int, variation: int = 2) -> "BinaryOutput":
-        """Parse binary output from bytes."""
+        """Parse binary output from bytes.
+
+        Raises:
+            ValueError: If data is too short or variation is unsupported.
+        """
         if variation == 1:
+            if len(data) < 1:
+                raise ValueError("Insufficient data for binary output variation 1: need 1 byte")
             value = bool(data[0] & 0x01)
             flags = BinaryFlags.ONLINE
         elif variation == 2:
+            if len(data) < 1:
+                raise ValueError("Insufficient data for binary output variation 2: need 1 byte")
             flags = data[0]
             value = bool(flags & BinaryFlags.STATE)
         else:
@@ -315,7 +327,19 @@ class BinaryOutputCommand:
         return cls(index=index, control_code=ControlCode.TRIP_CLOSE_CLOSE | ControlCode.LATCH_ON)
 
     def to_bytes(self) -> bytes:
-        """Serialize to bytes (Group 12, Variation 1 format)."""
+        """Serialize to bytes (Group 12, Variation 1 format).
+
+        Raises:
+            ValueError: If count, on_time, off_time, or status is out of range.
+        """
+        if not 0 <= self.count <= 255:
+            raise ValueError(f"count must be 0-255, got {self.count}")
+        if self.on_time < 0:
+            raise ValueError(f"on_time must be >= 0, got {self.on_time}")
+        if self.off_time < 0:
+            raise ValueError(f"off_time must be >= 0, got {self.off_time}")
+        if not 0 <= self.status <= 255:
+            raise ValueError(f"status must be 0-255, got {self.status}")
         return struct.pack(
             "<BBIIB",  # Little-endian: byte, byte, uint32, uint32, byte
             self.control_code,
@@ -364,6 +388,9 @@ def parse_binary_inputs(
     Returns:
         List of BinaryInput objects
 
+    Raises:
+        ValueError: If variation is unsupported or count/start_index is negative.
+
     Supported variations:
         Group 1 (Binary Input):
             - Variation 1: Packed format (1 bit per point)
@@ -374,6 +401,11 @@ def parse_binary_inputs(
             - Variation 2: With absolute time (7 bytes per point)
             - Variation 3: With relative time (3 bytes per point)
     """
+    if count < 0:
+        raise ValueError(f"count must be >= 0, got {count}")
+    if start_index < 0:
+        raise ValueError(f"start_index must be >= 0, got {start_index}")
+
     inputs = []
     offset = 0
 
@@ -453,7 +485,15 @@ def parse_binary_outputs(
 
     Returns:
         List of BinaryOutput objects
+
+    Raises:
+        ValueError: If variation is unsupported or count/start_index is negative.
     """
+    if count < 0:
+        raise ValueError(f"count must be >= 0, got {count}")
+    if start_index < 0:
+        raise ValueError(f"start_index must be >= 0, got {start_index}")
+
     outputs = []
     offset = 0
 

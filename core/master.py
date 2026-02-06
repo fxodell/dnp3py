@@ -50,7 +50,7 @@ from pydnp3.objects.analog import (
     parse_analog_outputs,
 )
 from pydnp3.objects.counter import Counter, parse_counters
-from pydnp3.objects.groups import ObjectGroup, get_object_size
+from pydnp3.objects.groups import ObjectGroup, ObjectVariation, get_object_size
 from pydnp3.utils.logging import get_logger, log_frame
 
 
@@ -146,58 +146,60 @@ class DNP3Master:
         Raises:
             DNP3CommunicationError: If connection fails
         """
-        if self._connected:
-            return
+        with self._lock:
+            if self._connected:
+                return
 
-        sock = None
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(self.config.connection_timeout)
-            sock.connect((self.config.host, self.config.port))
-            self._socket = sock
-            self._connected = True
-            self._rx_buffer.clear()
-            self._logger.info(f"Connected to {self.config.host}:{self.config.port}")
+            sock = None
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(self.config.connection_timeout)
+                sock.connect((self.config.host, self.config.port))
+                self._socket = sock
+                self._connected = True
+                self._rx_buffer.clear()
+                self._logger.info(f"Connected to {self.config.host}:{self.config.port}")
 
-            # Optional: Reset link state
-            # self._reset_link()
+                # Optional: Reset link state
+                # self._reset_link()
 
-        except socket.timeout as e:
-            if sock:
-                try:
-                    sock.close()
-                except Exception:
-                    pass
-            self._socket = None
-            self._connected = False
-            raise DNP3TimeoutError(
-                f"Connection timeout to {self.config.host}:{self.config.port}",
-                timeout_seconds=self.config.connection_timeout,
-            ) from e
-        except socket.error as e:
-            if sock:
-                try:
-                    sock.close()
-                except Exception:
-                    pass
-            self._socket = None
-            self._connected = False
-            raise DNP3CommunicationError(
-                f"Failed to connect: {e}",
-                host=self.config.host,
-                port=self.config.port,
-            ) from e
+            except socket.timeout as e:
+                if sock:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+                self._socket = None
+                self._connected = False
+                raise DNP3TimeoutError(
+                    f"Connection timeout to {self.config.host}:{self.config.port}",
+                    timeout_seconds=self.config.connection_timeout,
+                ) from e
+            except socket.error as e:
+                if sock:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+                self._socket = None
+                self._connected = False
+                raise DNP3CommunicationError(
+                    f"Failed to connect: {e}",
+                    host=self.config.host,
+                    port=self.config.port,
+                ) from e
 
     def close(self) -> None:
         """Close connection to the outstation."""
-        if self._socket:
-            try:
-                self._socket.close()
-            except Exception:
-                pass
-            self._socket = None
-        self._connected = False
-        self._rx_buffer.clear()
+        with self._lock:
+            if self._socket:
+                try:
+                    self._socket.close()
+                except Exception:
+                    pass
+                self._socket = None
+            self._connected = False
+            self._rx_buffer.clear()
         self._logger.info("Connection closed")
 
     def _send_frame(self, frame: bytes) -> None:
@@ -1163,11 +1165,11 @@ class DNP3Master:
         """
         objects = []
         if class_mask & 0x01:
-            objects.append(ObjectHeader(group=60, variation=2, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_1, qualifier=QualifierCode.ALL_OBJECTS))
         if class_mask & 0x02:
-            objects.append(ObjectHeader(group=60, variation=3, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_2, qualifier=QualifierCode.ALL_OBJECTS))
         if class_mask & 0x04:
-            objects.append(ObjectHeader(group=60, variation=4, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_3, qualifier=QualifierCode.ALL_OBJECTS))
 
         apdu = self._application.build_request(AppLayerFunction.ENABLE_UNSOLICITED, objects)
         response = self._send_request(apdu)
@@ -1185,11 +1187,11 @@ class DNP3Master:
         """
         objects = []
         if class_mask & 0x01:
-            objects.append(ObjectHeader(group=60, variation=2, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_1, qualifier=QualifierCode.ALL_OBJECTS))
         if class_mask & 0x02:
-            objects.append(ObjectHeader(group=60, variation=3, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_2, qualifier=QualifierCode.ALL_OBJECTS))
         if class_mask & 0x04:
-            objects.append(ObjectHeader(group=60, variation=4, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_3, qualifier=QualifierCode.ALL_OBJECTS))
 
         apdu = self._application.build_request(AppLayerFunction.DISABLE_UNSOLICITED, objects)
         response = self._send_request(apdu)

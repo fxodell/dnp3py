@@ -1,4 +1,4 @@
-# DNP3 Driver for Python
+# pydnp3
 
 A pure Python implementation of the DNP3 (Distributed Network Protocol 3) protocol for SCADA communications over TCP/IP.
 
@@ -22,15 +22,24 @@ This driver implements the DNP3 protocol stack to communicate with DNP3 outstati
   - Pulse control
 - **Class-Based Polling**: Support for Class 0, 1, 2, 3 data
 - **CRC-16 Error Detection**: Compliant with DNP3 CRC polynomial
+- **Thread-Safe**: `DNP3Master` supports concurrent use (open/close/requests protected by a lock)
+
+## Requirements
+
+- Python 3.9+
 
 ## Installation
 
 ```bash
-# Clone or copy the pydnp3 directory to your project
-pip install -e pydnp3/
+# Clone the repository
+git clone https://github.com/fxodell/pydnp3.git
+cd pydnp3
+
+# Install in development mode (recommended)
+pip install -e .
 ```
 
-Or simply add the pydnp3 directory to your Python path.
+After installation, `pydnp3` is available from any directory.
 
 ## Quick Start
 
@@ -70,11 +79,19 @@ with master.connect():
     master.direct_operate_analog(0, value=50.0)
 ```
 
+**Run the interactive examples** (requires pydnp3 installed):
+
+```bash
+python examples/basic_usage.py
+```
+
 ## Architecture
 
 ```
 pydnp3/
 ├── __init__.py           # Package exports
+├── setup.py              # Package setup (pip install -e .)
+├── test_connection.py    # Quick connection test (edit host/port/address)
 ├── core/
 │   ├── master.py         # DNP3Master class (main interface)
 │   ├── config.py         # Configuration and protocol constants
@@ -93,7 +110,8 @@ pydnp3/
 │   └── logging.py        # Logging utilities
 ├── examples/
 │   ├── basic_usage.py    # Basic usage examples
-│   └── async_example.py  # Async/threading example
+│   └── async_example.py   # Async/threading example
+├── docs/                 # Documentation
 └── tests/                # Unit tests
 ```
 
@@ -119,6 +137,8 @@ pydnp3/
 
 ## Configuration Options
 
+`DNP3Config` validates and normalizes values when you create a `DNP3Master` (e.g. host trimmed, port/addresses coerced to int). Invalid settings raise `ValueError` or `TypeError`.
+
 ```python
 config = DNP3Config(
     # Network
@@ -132,6 +152,7 @@ config = DNP3Config(
     # Timeouts (seconds)
     response_timeout=5.0,
     connection_timeout=10.0,
+    select_timeout=10.0,   # SBO: time between SELECT and OPERATE
 
     # Retries
     max_retries=3,
@@ -187,6 +208,8 @@ master.pulse_binary(
 
 ## Exception Handling
 
+All DNP3 exceptions inherit from `DNP3Error`. Catch it for any driver error, or use specific types for context (e.g. `host`/`port` on `DNP3CommunicationError`, `timeout_seconds` on `DNP3TimeoutError`).
+
 ```python
 from pydnp3 import (
     DNP3Error,
@@ -199,21 +222,30 @@ from pydnp3 import (
 try:
     with master.connect():
         result = master.integrity_poll()
-except DNP3TimeoutError:
-    print("Communication timeout")
+except DNP3TimeoutError as e:
+    print(f"Timeout after {e.timeout_seconds}s")
 except DNP3CommunicationError as e:
-    print(f"Connection failed: {e}")
+    print(f"Connection failed: {e} (host={e.host}, port={e.port})")
 except DNP3CRCError:
     print("CRC validation failed")
 except DNP3Error as e:
     print(f"DNP3 error: {e}")
 ```
 
+For frame, object, or control-specific errors, use `from pydnp3.core import DNP3FrameError, DNP3ObjectError, DNP3ControlError`.
+
 ## Running Tests
 
+From the project root (with pydnp3 installed):
+
 ```bash
-cd pydnp3
 pytest tests/ -v
+```
+
+To quickly test a live outstation, edit `test_connection.py` with your host, port, and outstation address, then run:
+
+```bash
+python test_connection.py
 ```
 
 ## References
@@ -222,12 +254,17 @@ pytest tests/ -v
 - [DNP Users Group](https://www.dnp.org/)
 - [DNP3 Protocol Overview](https://www.trianglemicroworks.com/docs/default-source/referenced-documents/DNP3_Overview.pdf)
 
+## Development
+
+- **Package layout**: Install with `pip install -e .` from the repo root; `pydnp3` is the top-level package.
+- **Validation**: `DNP3Config.validate()` normalizes and validates host, port, addresses, timeouts, and limits; called automatically when creating a `DNP3Master`.
+- **Objects**: Binary and analog object parsing/serialization validate input length and value ranges and raise clear `ValueError`s.
+- **Exceptions**: All DNP3 exceptions inherit from `DNP3Error`; optional attributes (e.g. `host`, `port`, `timeout_seconds`) use `Optional` typing.
+
 ## License
 
 This implementation is provided as-is for educational and development purposes.
 
 ## Disclaimer
 
-This is a reference implementation. For production SCADA systems, consider using certified DNP3 libraries such as:
-- [OpenDNP3](https://github.com/automatak/dnp3)
-- [pydnp3](https://github.com/ChargePoint/pydnp3)
+This is a reference implementation. For production SCADA systems, consider evaluation of certified DNP3 stacks such as [OpenDNP3](https://github.com/automatak/dnp3).

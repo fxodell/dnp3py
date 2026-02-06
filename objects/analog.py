@@ -70,34 +70,40 @@ class AnalogInput:
 
         Returns:
             Parsed AnalogInput
+
+        Raises:
+            ValueError: If data is too short or variation is unsupported.
         """
+        # Required sizes: 1->5, 2->3, 3->4, 4->2, 5->5, 6->9
+        sizes = {1: 5, 2: 3, 3: 4, 4: 2, 5: 5, 6: 9}
+        required = sizes.get(variation)
+        if required is None:
+            raise ValueError(f"Unsupported variation: {variation}")
+        if len(data) < required:
+            raise ValueError(
+                f"Insufficient data for analog input variation {variation}: "
+                f"need {required} bytes, got {len(data)}"
+            )
+
         flags = AnalogFlags.ONLINE
         value: Union[int, float] = 0
 
         if variation == 1:
-            # 32-bit signed with flag
             flags = data[0]
             value = struct.unpack("<i", data[1:5])[0]
         elif variation == 2:
-            # 16-bit signed with flag
             flags = data[0]
             value = struct.unpack("<h", data[1:3])[0]
         elif variation == 3:
-            # 32-bit signed without flag
             value = struct.unpack("<i", data[:4])[0]
         elif variation == 4:
-            # 16-bit signed without flag
             value = struct.unpack("<h", data[:2])[0]
         elif variation == 5:
-            # 32-bit float with flag
             flags = data[0]
             value = struct.unpack("<f", data[1:5])[0]
         elif variation == 6:
-            # 64-bit double with flag
             flags = data[0]
             value = struct.unpack("<d", data[1:9])[0]
-        else:
-            raise ValueError(f"Unsupported variation: {variation}")
 
         return cls(index=index, value=value, flags=flags)
 
@@ -180,7 +186,21 @@ class AnalogOutput:
 
     @classmethod
     def from_bytes(cls, data: bytes, index: int, variation: int = 1) -> "AnalogOutput":
-        """Parse analog output from bytes."""
+        """Parse analog output from bytes.
+
+        Raises:
+            ValueError: If data is too short or variation is unsupported.
+        """
+        sizes = {1: 5, 2: 3, 3: 5, 4: 9}
+        required = sizes.get(variation)
+        if required is None:
+            raise ValueError(f"Unsupported variation: {variation}")
+        if len(data) < required:
+            raise ValueError(
+                f"Insufficient data for analog output variation {variation}: "
+                f"need {required} bytes, got {len(data)}"
+            )
+
         flags = AnalogFlags.ONLINE
         value: Union[int, float] = 0
 
@@ -196,21 +216,32 @@ class AnalogOutput:
         elif variation == 4:
             flags = data[0]
             value = struct.unpack("<d", data[1:9])[0]
-        else:
-            raise ValueError(f"Unsupported variation: {variation}")
 
         return cls(index=index, value=value, flags=flags)
 
     def to_bytes(self, variation: int = 1) -> bytes:
-        """Serialize to bytes."""
+        """Serialize to bytes.
+
+        Raises:
+            ValueError: If value is out of range for integer variations or variation is unsupported.
+        """
         result = bytearray()
+        int_val = int(self.value)
 
         if variation == 1:
+            if not -2147483648 <= int_val <= 2147483647:
+                raise ValueError(
+                    f"Value {int_val} out of range for 32-bit signed integer"
+                )
             result.append(self.flags)
-            result.extend(struct.pack("<i", int(self.value)))
+            result.extend(struct.pack("<i", int_val))
         elif variation == 2:
+            if not -32768 <= int_val <= 32767:
+                raise ValueError(
+                    f"Value {int_val} out of range for 16-bit signed integer"
+                )
             result.append(self.flags)
-            result.extend(struct.pack("<h", int(self.value)))
+            result.extend(struct.pack("<h", int_val))
         elif variation == 3:
             result.append(self.flags)
             result.extend(struct.pack("<f", float(self.value)))
@@ -249,14 +280,26 @@ class AnalogOutputCommand:
 
         Args:
             variation: 1=int32, 2=int16, 3=float32, 4=float64
+
+        Raises:
+            ValueError: If value is out of range for integer variations or variation is unsupported.
         """
         result = bytearray()
+        int_val = int(self.value)
 
         if variation == 1:
-            result.extend(struct.pack("<i", int(self.value)))
+            if not -2147483648 <= int_val <= 2147483647:
+                raise ValueError(
+                    f"Value {int_val} out of range for 32-bit signed integer"
+                )
+            result.extend(struct.pack("<i", int_val))
             result.append(self.status)
         elif variation == 2:
-            result.extend(struct.pack("<h", int(self.value)))
+            if not -32768 <= int_val <= 32767:
+                raise ValueError(
+                    f"Value {int_val} out of range for 16-bit signed integer"
+                )
+            result.extend(struct.pack("<h", int_val))
             result.append(self.status)
         elif variation == 3:
             result.extend(struct.pack("<f", float(self.value)))
@@ -321,8 +364,15 @@ def parse_analog_inputs(
 
     Returns:
         List of AnalogInput objects
+
+    Raises:
+        ValueError: If variation is unsupported or count/start_index is negative.
     """
-    # Size per object based on variation
+    if count < 0:
+        raise ValueError(f"count must be >= 0, got {count}")
+    if start_index < 0:
+        raise ValueError(f"start_index must be >= 0, got {start_index}")
+
     sizes = {1: 5, 2: 3, 3: 4, 4: 2, 5: 5, 6: 9}
     obj_size = sizes.get(variation)
     if obj_size is None:
@@ -357,7 +407,15 @@ def parse_analog_outputs(
 
     Returns:
         List of AnalogOutput objects
+
+    Raises:
+        ValueError: If variation is unsupported or count/start_index is negative.
     """
+    if count < 0:
+        raise ValueError(f"count must be >= 0, got {count}")
+    if start_index < 0:
+        raise ValueError(f"start_index must be >= 0, got {start_index}")
+
     sizes = {1: 5, 2: 3, 3: 5, 4: 9}
     obj_size = sizes.get(variation)
     if obj_size is None:

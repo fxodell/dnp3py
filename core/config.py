@@ -149,7 +149,9 @@ class IINFlags:
 
     @classmethod
     def from_bytes(cls, iin1: int, iin2: int) -> "IINFlags":
-        """Parse IIN bytes into flags."""
+        """Parse IIN bytes into flags. Values are masked to 0-255."""
+        iin1 = int(iin1) & 0xFF
+        iin2 = int(iin2) & 0xFF
         return cls(
             broadcast=(iin1 & 0x01) != 0,
             class_1_events=(iin1 & 0x02) != 0,
@@ -247,28 +249,90 @@ class DNP3Config:
     log_raw_frames: bool = False
 
     def validate(self) -> None:
-        """Validate configuration values.
+        """Validate and normalize configuration values.
 
         DNP3 addressing rules:
         - Valid range: 0-65519 (0x0000-0xFFEF)
         - Reserved: 65520-65534 (0xFFF0-0xFFFE) for special purposes
         - Broadcast: 65535 (0xFFFF) - not valid for master/outstation addresses
+
+        Raises:
+            ValueError: If any value is out of range or invalid.
+            TypeError: If host is not a string.
         """
+        # Host: non-empty string (strip whitespace)
+        if self.host is None or not isinstance(self.host, str):
+            raise TypeError(
+                f"Host must be a non-empty string, got {type(self.host).__name__ if self.host is not None else 'NoneType'}"
+            )
+        self.host = self.host.strip()
+        if not self.host:
+            raise ValueError("Host must be a non-empty string")
+
+        # Port: integer 1-65535 (coerce from integral float if needed)
+        try:
+            port = int(self.port)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Port must be an integer, got {self.port!r}") from e
+        if not 1 <= port <= 65535:
+            raise ValueError(f"Port must be 1-65535, got {port}")
+        self.port = port
+
         # DNP3 reserves addresses 65520-65535 for special purposes
         MAX_VALID_ADDRESS = 65519
-        if not 0 <= self.master_address <= MAX_VALID_ADDRESS:
+
+        try:
+            master_address = int(self.master_address)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Master address must be an integer, got {self.master_address!r}") from e
+        if not 0 <= master_address <= MAX_VALID_ADDRESS:
             raise ValueError(
-                f"Master address must be 0-65519 (0xFFEF), got {self.master_address}. "
-                f"Addresses 65520-65535 are reserved."
+                f"Master address must be 0-65519 (0xFFEF), got {master_address}. "
+                "Addresses 65520-65535 are reserved."
             )
-        if not 0 <= self.outstation_address <= MAX_VALID_ADDRESS:
+        self.master_address = master_address
+
+        try:
+            outstation_address = int(self.outstation_address)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Outstation address must be an integer, got {self.outstation_address!r}") from e
+        if not 0 <= outstation_address <= MAX_VALID_ADDRESS:
             raise ValueError(
-                f"Outstation address must be 0-65519 (0xFFEF), got {self.outstation_address}. "
-                f"Addresses 65520-65535 are reserved."
+                f"Outstation address must be 0-65519 (0xFFEF), got {outstation_address}. "
+                "Addresses 65520-65535 are reserved."
             )
-        if not 1 <= self.port <= 65535:
-            raise ValueError(f"Port must be 1-65535, got {self.port}")
-        if self.max_frame_size > 250:
-            raise ValueError(f"Max frame size cannot exceed 250, got {self.max_frame_size}")
+        self.outstation_address = outstation_address
+
+        # Timeouts (seconds) must be positive
         if self.response_timeout <= 0:
             raise ValueError(f"Response timeout must be positive, got {self.response_timeout}")
+        if self.connection_timeout <= 0:
+            raise ValueError(f"Connection timeout must be positive, got {self.connection_timeout}")
+        if self.select_timeout <= 0:
+            raise ValueError(f"Select timeout must be positive, got {self.select_timeout}")
+
+        # Retries
+        try:
+            max_retries = int(self.max_retries)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"max_retries must be an integer, got {self.max_retries!r}") from e
+        if max_retries < 0:
+            raise ValueError(f"max_retries must be >= 0, got {max_retries}")
+        self.max_retries = max_retries
+
+        if self.retry_delay < 0:
+            raise ValueError(f"retry_delay must be >= 0, got {self.retry_delay}")
+
+        # Data link: max user data per frame (DNP3 limit 250)
+        if not 1 <= self.max_frame_size <= 250:
+            raise ValueError(f"max_frame_size must be 1-250, got {self.max_frame_size}")
+
+        # Application layer
+        if self.max_apdu_size < 1:
+            raise ValueError(f"max_apdu_size must be >= 1, got {self.max_apdu_size}")
+
+        # Poll intervals (0 = disabled)
+        for name in ("class_0_poll_interval", "class_1_poll_interval", "class_2_poll_interval", "class_3_poll_interval"):
+            val = getattr(self, name)
+            if val < 0:
+                raise ValueError(f"{name} must be >= 0, got {val}")
