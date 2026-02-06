@@ -1,15 +1,16 @@
 """Tests for DNP3 Transport Layer."""
 
 import pytest
+
+from dnp3py.core.exceptions import DNP3FrameError
 from dnp3py.layers.transport import (
+    FIN_FLAG,
+    FIR_FLAG,
+    MAX_MESSAGE_SIZE,
+    MAX_SEGMENT_PAYLOAD,
     TransportLayer,
     TransportSegment,
-    MAX_SEGMENT_PAYLOAD,
-    MAX_MESSAGE_SIZE,
-    FIR_FLAG,
-    FIN_FLAG,
 )
-from dnp3py.core.exceptions import DNP3FrameError
 
 
 class TestTransportSegment:

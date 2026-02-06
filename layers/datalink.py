@@ -19,12 +19,11 @@ Maximum user data per frame is 250 bytes.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 from enum import IntFlag
+from typing import Optional
 
-from dnp3py.utils.crc import CRC16DNP3
 from dnp3py.core.exceptions import DNP3CRCError, DNP3FrameError
-
+from dnp3py.utils.crc import CRC16DNP3
 
 # DNP3 Frame constants
 START_BYTES = bytes([0x05, 0x64])
@@ -158,9 +157,7 @@ class DataLinkLayer:
             raise ValueError(f"{name} address must be non-negative, got {address}")
         if address > cls.MAX_VALID_ADDRESS:
             if address == cls.BROADCAST_ADDRESS:
-                raise ValueError(
-                    f"{name} address cannot be broadcast address (65535/0xFFFF)"
-                )
+                raise ValueError(f"{name} address cannot be broadcast address (65535/0xFFFF)")
             raise ValueError(
                 f"{name} address must be 0-65519 (0xFFEF), got {address}. "
                 f"Addresses 65520-65535 are reserved."
@@ -233,7 +230,7 @@ class DataLinkLayer:
 
         # Add user data with block CRCs
         for i in range(0, len(user_data), BLOCK_SIZE):
-            block = user_data[i:i + BLOCK_SIZE]
+            block = user_data[i : i + BLOCK_SIZE]
             frame.extend(block)
             frame.extend(CRC16DNP3.calculate_bytes(block))
 
@@ -315,7 +312,7 @@ class DataLinkLayer:
 
         return bytes(frame)
 
-    def parse_frame(self, data: bytes) -> Tuple[DataLinkFrame, int]:
+    def parse_frame(self, data: bytes) -> tuple[DataLinkFrame, int]:
         """
         Parse a DNP3 data link frame from bytes.
 
@@ -334,9 +331,7 @@ class DataLinkLayer:
 
         # Check start bytes
         if data[:2] != START_BYTES:
-            raise DNP3FrameError(
-                f"Invalid start bytes: 0x{data[0]:02X} 0x{data[1]:02X}"
-            )
+            raise DNP3FrameError(f"Invalid start bytes: 0x{data[0]:02X} 0x{data[1]:02X}")
 
         # Parse header
         length = data[2]
@@ -377,8 +372,10 @@ class DataLinkLayer:
                     f"Incomplete frame: need {offset + expected_frame_bytes}, have {len(data)}"
                 )
 
-            block = data[offset:offset + block_size]
-            block_crc = int.from_bytes(data[offset + block_size:offset + block_size + 2], "little")
+            block = data[offset : offset + block_size]
+            block_crc = int.from_bytes(
+                data[offset + block_size : offset + block_size + 2], "little"
+            )
 
             # Verify block CRC
             calculated_block_crc = CRC16DNP3.calculate(block)

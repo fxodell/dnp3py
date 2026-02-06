@@ -20,16 +20,14 @@ Application Control Byte:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Any
-from enum import IntEnum
+from typing import Optional
 
 from dnp3py.core.config import (
     AppLayerFunction,
-    QualifierCode,
     IINFlags,
+    QualifierCode,
 )
-from dnp3py.core.exceptions import DNP3ProtocolError, DNP3ObjectError
-
+from dnp3py.core.exceptions import DNP3ObjectError, DNP3ProtocolError
 
 # Application control byte flags
 FIR_FLAG = 0x80
@@ -59,11 +57,13 @@ class ObjectHeader:
 
     def to_bytes(self) -> bytes:
         """Serialize object header to bytes."""
-        for name, val in (("group", self.group), ("variation", self.variation), ("qualifier", self.qualifier)):
+        for name, val in (
+            ("group", self.group),
+            ("variation", self.variation),
+            ("qualifier", self.qualifier),
+        ):
             if not isinstance(val, int) or not (0 <= val <= 255):
-                raise DNP3ObjectError(
-                    f"Object header {name} must be an integer 0-255, got {val!r}"
-                )
+                raise DNP3ObjectError(f"Object header {name} must be an integer 0-255, got {val!r}")
         result = bytearray([self.group, self.variation, self.qualifier])
 
         # Add range/count based on qualifier
@@ -119,7 +119,7 @@ class ObjectHeader:
         return bytes(result)
 
     @classmethod
-    def from_bytes(cls, data: bytes, offset: int = 0) -> Tuple["ObjectHeader", int]:
+    def from_bytes(cls, data: bytes, offset: int = 0) -> tuple["ObjectHeader", int]:
         """
         Parse object header from bytes.
 
@@ -131,9 +131,7 @@ class ObjectHeader:
             Tuple of (ObjectHeader, bytes consumed)
         """
         if not isinstance(offset, int) or offset < 0:
-            raise DNP3ObjectError(
-                f"Invalid offset: must be non-negative integer, got {offset!r}"
-            )
+            raise DNP3ObjectError(f"Invalid offset: must be non-negative integer, got {offset!r}")
         if offset > len(data):
             raise DNP3ObjectError(
                 f"Offset beyond data length: offset={offset}, len(data)={len(data)}"
@@ -157,20 +155,18 @@ class ObjectHeader:
             range_start = data[offset + consumed]
             range_stop = data[offset + consumed + 1]
             if range_stop < range_start:
-                raise DNP3ObjectError(
-                    f"Invalid range: start {range_start} > stop {range_stop}"
-                )
+                raise DNP3ObjectError(f"Invalid range: start {range_start} > stop {range_stop}")
             count = range_stop - range_start + 1
             consumed += 2
         elif qualifier == QualifierCode.UINT16_START_STOP:
             if len(data) - offset - consumed < 4:
                 raise DNP3ObjectError("Insufficient data for range")
-            range_start = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
-            range_stop = int.from_bytes(data[offset + consumed + 2:offset + consumed + 4], "little")
+            range_start = int.from_bytes(data[offset + consumed : offset + consumed + 2], "little")
+            range_stop = int.from_bytes(
+                data[offset + consumed + 2 : offset + consumed + 4], "little"
+            )
             if range_stop < range_start:
-                raise DNP3ObjectError(
-                    f"Invalid range: start {range_start} > stop {range_stop}"
-                )
+                raise DNP3ObjectError(f"Invalid range: start {range_start} > stop {range_stop}")
             count = range_stop - range_start + 1
             consumed += 4
         elif qualifier == QualifierCode.ALL_OBJECTS:
@@ -183,14 +179,17 @@ class ObjectHeader:
         elif qualifier == QualifierCode.UINT16_COUNT:
             if len(data) - offset - consumed < 2:
                 raise DNP3ObjectError("Insufficient data for count")
-            count = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
+            count = int.from_bytes(data[offset + consumed : offset + consumed + 2], "little")
             consumed += 2
         elif qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
             if len(data) - offset - consumed < 1:
                 raise DNP3ObjectError("Insufficient data for count")
             count = data[offset + consumed]
             consumed += 1
-        elif qualifier in (QualifierCode.UINT8_COUNT_UINT16_INDEX, QualifierCode.UINT16_COUNT_UINT16_INDEX):
+        elif qualifier in (
+            QualifierCode.UINT8_COUNT_UINT16_INDEX,
+            QualifierCode.UINT16_COUNT_UINT16_INDEX,
+        ):
             if qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
                 if len(data) - offset - consumed < 1:
                     raise DNP3ObjectError("Insufficient data for count")
@@ -199,7 +198,7 @@ class ObjectHeader:
             else:
                 if len(data) - offset - consumed < 2:
                     raise DNP3ObjectError("Insufficient data for count")
-                count = int.from_bytes(data[offset + consumed:offset + consumed + 2], "little")
+                count = int.from_bytes(data[offset + consumed : offset + consumed + 2], "little")
                 consumed += 2
         else:
             raise DNP3ObjectError(f"Unsupported qualifier code: 0x{qualifier:02X}")
@@ -227,20 +226,16 @@ class ApplicationRequest:
     first: bool = True
     final: bool = True
     confirm: bool = False
-    objects: List[ObjectHeader] = field(default_factory=list)
+    objects: list[ObjectHeader] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Validate request parameters."""
         # Validate sequence number is in valid range (0-15)
         if not 0 <= self.sequence <= SEQ_MASK:
-            raise ValueError(
-                f"Sequence number must be 0-15, got {self.sequence}"
-            )
+            raise ValueError(f"Sequence number must be 0-15, got {self.sequence}")
         # Validate function code is a valid byte
         if not 0 <= self.function <= 255:
-            raise ValueError(
-                f"Function code must be 0-255, got {self.function}"
-            )
+            raise ValueError(f"Function code must be 0-255, got {self.function}")
 
     @property
     def control(self) -> int:
@@ -312,45 +307,60 @@ class ApplicationRequest:
         )
 
     @classmethod
-    def read_binary_inputs(cls, start: int = 0, stop: int = 0, sequence: int = 0) -> "ApplicationRequest":
+    def read_binary_inputs(
+        cls, start: int = 0, stop: int = 0, sequence: int = 0
+    ) -> "ApplicationRequest":
         """Create a binary inputs read request."""
         return cls(
             function=AppLayerFunction.READ,
             sequence=sequence,
-            objects=[ObjectHeader(
-                group=1, variation=0,  # Variation 0 = any variation
-                qualifier=QualifierCode.UINT16_START_STOP,
-                range_start=start,
-                range_stop=stop,
-            )],
+            objects=[
+                ObjectHeader(
+                    group=1,
+                    variation=0,  # Variation 0 = any variation
+                    qualifier=QualifierCode.UINT16_START_STOP,
+                    range_start=start,
+                    range_stop=stop,
+                )
+            ],
         )
 
     @classmethod
-    def read_analog_inputs(cls, start: int = 0, stop: int = 0, sequence: int = 0) -> "ApplicationRequest":
+    def read_analog_inputs(
+        cls, start: int = 0, stop: int = 0, sequence: int = 0
+    ) -> "ApplicationRequest":
         """Create an analog inputs read request."""
         return cls(
             function=AppLayerFunction.READ,
             sequence=sequence,
-            objects=[ObjectHeader(
-                group=30, variation=0,
-                qualifier=QualifierCode.UINT16_START_STOP,
-                range_start=start,
-                range_stop=stop,
-            )],
+            objects=[
+                ObjectHeader(
+                    group=30,
+                    variation=0,
+                    qualifier=QualifierCode.UINT16_START_STOP,
+                    range_start=start,
+                    range_stop=stop,
+                )
+            ],
         )
 
     @classmethod
-    def read_counters(cls, start: int = 0, stop: int = 0, sequence: int = 0) -> "ApplicationRequest":
+    def read_counters(
+        cls, start: int = 0, stop: int = 0, sequence: int = 0
+    ) -> "ApplicationRequest":
         """Create a counters read request."""
         return cls(
             function=AppLayerFunction.READ,
             sequence=sequence,
-            objects=[ObjectHeader(
-                group=20, variation=0,
-                qualifier=QualifierCode.UINT16_START_STOP,
-                range_start=start,
-                range_stop=stop,
-            )],
+            objects=[
+                ObjectHeader(
+                    group=20,
+                    variation=0,
+                    qualifier=QualifierCode.UINT16_START_STOP,
+                    range_start=start,
+                    range_stop=stop,
+                )
+            ],
         )
 
 
@@ -367,7 +377,7 @@ class ApplicationResponse:
     iin: IINFlags
     iin1: int
     iin2: int
-    objects: List[ObjectHeader] = field(default_factory=list)
+    objects: list[ObjectHeader] = field(default_factory=list)
     raw_data: bytes = b""
 
     @classmethod
@@ -446,7 +456,7 @@ class ApplicationResponse:
                 objects.append(obj_header)
                 offset += total_object_size
 
-            except DNP3ObjectError as e:
+            except DNP3ObjectError:
                 # Log and break - no more valid object headers
                 break
 
@@ -570,7 +580,7 @@ class ApplicationLayer:
     def build_request(
         self,
         function: int,
-        objects: Optional[List[ObjectHeader]] = None,
+        objects: Optional[list[ObjectHeader]] = None,
         confirm: bool = False,
     ) -> bytes:
         """
@@ -611,9 +621,7 @@ class ApplicationLayer:
             ValueError: If sequence is not in 0-15
         """
         if not isinstance(sequence, int) or not 0 <= sequence <= SEQ_MASK:
-            raise ValueError(
-                f"Application sequence must be 0-15, got {sequence!r}"
-            )
+            raise ValueError(f"Application sequence must be 0-15, got {sequence!r}")
         control = sequence & SEQ_MASK
         control |= FIR_FLAG | FIN_FLAG
         if unsolicited:

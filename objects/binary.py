@@ -8,10 +8,10 @@ Binary objects represent two-state (on/off) devices such as:
 - Alarms
 """
 
-from dataclasses import dataclass
-from typing import Optional, List
-from enum import IntFlag
 import struct
+from dataclasses import dataclass
+from enum import IntFlag
+from typing import Optional
 
 from dnp3py.core.config import ControlCode, ControlStatus
 
@@ -19,14 +19,14 @@ from dnp3py.core.config import ControlCode, ControlStatus
 class BinaryFlags(IntFlag):
     """Flags byte for binary objects."""
 
-    ONLINE = 0x01           # Point is online
-    RESTART = 0x02          # Point has been restarted
-    COMM_LOST = 0x04        # Communication lost
-    REMOTE_FORCED = 0x08    # Value forced by remote
-    LOCAL_FORCED = 0x10     # Value forced by local
-    CHATTER_FILTER = 0x20   # Chatter filter active
-    RESERVED = 0x40         # Reserved
-    STATE = 0x80            # Binary state (0=OFF, 1=ON)
+    ONLINE = 0x01  # Point is online
+    RESTART = 0x02  # Point has been restarted
+    COMM_LOST = 0x04  # Communication lost
+    REMOTE_FORCED = 0x08  # Value forced by remote
+    LOCAL_FORCED = 0x10  # Value forced by local
+    CHATTER_FILTER = 0x20  # Chatter filter active
+    RESERVED = 0x40  # Reserved
+    STATE = 0x80  # Binary state (0=OFF, 1=ON)
 
 
 @dataclass
@@ -241,8 +241,8 @@ class BinaryOutputCommand:
     index: int
     control_code: int = ControlCode.LATCH_ON
     count: int = 1
-    on_time: int = 0       # Milliseconds for pulse on
-    off_time: int = 0      # Milliseconds for pulse off
+    on_time: int = 0  # Milliseconds for pulse on
+    off_time: int = 0  # Milliseconds for pulse off
     status: int = ControlStatus.SUCCESS
 
     def __post_init__(self) -> None:
@@ -259,10 +259,10 @@ class BinaryOutputCommand:
             raise ValueError(f"Invalid CROB base control code: 0x{base_op:02X}")
 
         allowed_flags = (
-            ControlCode.QUEUE |
-            ControlCode.CLEAR |
-            ControlCode.TRIP_CLOSE_TRIP |
-            ControlCode.TRIP_CLOSE_CLOSE
+            ControlCode.QUEUE
+            | ControlCode.CLEAR
+            | ControlCode.TRIP_CLOSE_TRIP
+            | ControlCode.TRIP_CLOSE_CLOSE
         )
         if self.control_code & ~allowed_flags & 0xF0:
             raise ValueError(f"Invalid CROB control flag bits: 0x{self.control_code:02X}")
@@ -294,7 +294,9 @@ class BinaryOutputCommand:
         return cls(index=index, control_code=ControlCode.LATCH_OFF)
 
     @classmethod
-    def pulse_on(cls, index: int, on_time: int, off_time: int = 0, count: int = 1) -> "BinaryOutputCommand":
+    def pulse_on(
+        cls, index: int, on_time: int, off_time: int = 0, count: int = 1
+    ) -> "BinaryOutputCommand":
         """Create a pulse-on command."""
         return cls(
             index=index,
@@ -305,7 +307,9 @@ class BinaryOutputCommand:
         )
 
     @classmethod
-    def pulse_off(cls, index: int, on_time: int = 0, off_time: int = 0, count: int = 1) -> "BinaryOutputCommand":
+    def pulse_off(
+        cls, index: int, on_time: int = 0, off_time: int = 0, count: int = 1
+    ) -> "BinaryOutputCommand":
         """Create a pulse-off command."""
         return cls(
             index=index,
@@ -383,7 +387,7 @@ def parse_binary_inputs(
     start_index: int,
     count: int,
     variation: int,
-) -> List[BinaryInput]:
+) -> list[BinaryInput]:
     """
     Parse multiple binary inputs from response data.
 
@@ -419,11 +423,6 @@ def parse_binary_inputs(
 
     # Size per object based on variation
     # Variation 1 is packed (handled specially), variations 2/3 are fixed sizes
-    variation_sizes = {
-        1: 1,  # Flags only (or packed - handled separately)
-        2: 7,  # Flags + 48-bit absolute time (for events) or just flags (for static)
-        3: 3,  # Flags + 16-bit relative time
-    }
 
     if variation == 1:
         # Packed format - 8 bits per byte (Group 1 Var 1)
@@ -437,11 +436,13 @@ def parse_binary_inputs(
                 break
 
             value = bool(data[byte_idx] & (1 << bit_idx))
-            inputs.append(BinaryInput(
-                index=start_index + i,
-                value=value,
-                flags=BinaryFlags.ONLINE,
-            ))
+            inputs.append(
+                BinaryInput(
+                    index=start_index + i,
+                    value=value,
+                    flags=BinaryFlags.ONLINE,
+                )
+            )
     elif variation == 2:
         # Could be Group 1 Var 2 (1 byte) or Group 2 Var 2 (7 bytes)
         # Determine size based on data available
@@ -456,9 +457,9 @@ def parse_binary_inputs(
         for i in range(count):
             if offset + obj_size > len(data):
                 break
-            inputs.append(BinaryInput.from_bytes(
-                data[offset:offset + obj_size], start_index + i, variation
-            ))
+            inputs.append(
+                BinaryInput.from_bytes(data[offset : offset + obj_size], start_index + i, variation)
+            )
             offset += obj_size
     elif variation == 3:
         # Group 2 Var 3: Event with relative time (3 bytes per point)
@@ -466,9 +467,9 @@ def parse_binary_inputs(
         for i in range(count):
             if offset + obj_size > len(data):
                 break
-            inputs.append(BinaryInput.from_bytes(
-                data[offset:offset + obj_size], start_index + i, variation
-            ))
+            inputs.append(
+                BinaryInput.from_bytes(data[offset : offset + obj_size], start_index + i, variation)
+            )
             offset += obj_size
     else:
         raise ValueError(f"Unsupported binary input variation: {variation}")
@@ -481,7 +482,7 @@ def parse_binary_outputs(
     start_index: int,
     count: int,
     variation: int,
-) -> List[BinaryOutput]:
+) -> list[BinaryOutput]:
     """
     Parse multiple binary outputs from response data.
 
@@ -515,17 +516,21 @@ def parse_binary_outputs(
                 break
 
             value = bool(data[byte_idx] & (1 << bit_idx))
-            outputs.append(BinaryOutput(
-                index=start_index + i,
-                value=value,
-                flags=BinaryFlags.ONLINE,
-            ))
+            outputs.append(
+                BinaryOutput(
+                    index=start_index + i,
+                    value=value,
+                    flags=BinaryFlags.ONLINE,
+                )
+            )
     elif variation == 2:
         # With flags - 1 byte per point
         for i in range(count):
             if offset >= len(data):
                 break
-            outputs.append(BinaryOutput.from_bytes(data[offset:offset + 1], start_index + i, variation))
+            outputs.append(
+                BinaryOutput.from_bytes(data[offset : offset + 1], start_index + i, variation)
+            )
             offset += 1
     else:
         raise ValueError(f"Unsupported binary output variation: {variation}")

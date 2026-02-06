@@ -68,9 +68,7 @@ class CRC16DNP3:
         if data is None:
             raise ValueError("CRC input data cannot be None")
         if not isinstance(data, (bytes, bytearray)):
-            raise TypeError(
-                f"CRC input must be bytes or bytearray, got {type(data).__name__}"
-            )
+            raise TypeError(f"CRC input must be bytes or bytearray, got {type(data).__name__}")
 
         table = cls._init_table()
         crc = 0x0000
@@ -128,13 +126,9 @@ class CRC16DNP3:
         if crc_bytes is None:
             raise ValueError("CRC bytes cannot be None")
         if not isinstance(crc_bytes, (bytes, bytearray)):
-            raise TypeError(
-                f"CRC bytes must be bytes or bytearray, got {type(crc_bytes).__name__}"
-            )
+            raise TypeError(f"CRC bytes must be bytes or bytearray, got {type(crc_bytes).__name__}")
         if len(crc_bytes) != 2:
-            raise ValueError(
-                f"CRC bytes must be exactly 2 bytes, got {len(crc_bytes)}"
-            )
+            raise ValueError(f"CRC bytes must be exactly 2 bytes, got {len(crc_bytes)}")
         expected = crc_bytes[0] | (crc_bytes[1] << 8)
         return cls.verify(data, expected)
 
@@ -170,9 +164,7 @@ def calculate_frame_crc(frame_data: Union[bytes, bytearray]) -> tuple[bytes, lis
         TypeError: If frame_data is not bytes or bytearray.
     """
     if not isinstance(frame_data, (bytes, bytearray)):
-        raise TypeError(
-            f"frame_data must be bytes or bytearray, got {type(frame_data).__name__}"
-        )
+        raise TypeError(f"frame_data must be bytes or bytearray, got {type(frame_data).__name__}")
     header = frame_data[:8]
     header_crc = CRC16DNP3.calculate_bytes(header)
 
@@ -181,7 +173,7 @@ def calculate_frame_crc(frame_data: Union[bytes, bytearray]) -> tuple[bytes, lis
 
     # Calculate CRC for each 16-byte block
     for i in range(0, len(user_data), 16):
-        block = user_data[i:i + 16]
+        block = user_data[i : i + 16]
         block_crcs.append(CRC16DNP3.calculate_bytes(block))
 
     return header_crc, block_crcs

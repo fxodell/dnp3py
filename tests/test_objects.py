@@ -1,24 +1,26 @@
 """Tests for DNP3 data objects."""
 
-import pytest
 import struct
-from dnp3py.objects.binary import (
-    BinaryInput,
-    BinaryOutput,
-    BinaryOutputCommand,
-    BinaryFlags,
-    parse_binary_inputs,
-    parse_binary_outputs,
-)
+
+import pytest
+
+from dnp3py.core.config import ControlCode, ControlStatus
 from dnp3py.objects.analog import (
+    AnalogFlags,
     AnalogInput,
     AnalogOutput,
     AnalogOutputCommand,
-    AnalogFlags,
     parse_analog_inputs,
 )
+from dnp3py.objects.binary import (
+    BinaryFlags,
+    BinaryInput,
+    BinaryOutput,
+    BinaryOutputCommand,
+    parse_binary_inputs,
+    parse_binary_outputs,
+)
 from dnp3py.objects.counter import Counter, CounterFlags, parse_counters
-from dnp3py.core.config import ControlCode, ControlStatus
 
 
 class TestBinaryInput:
@@ -154,7 +156,9 @@ class TestBinaryOutputCommand:
     def test_invalid_control_code_trip_close(self):
         """Test invalid trip/close combination raises error."""
         with pytest.raises(ValueError):
-            BinaryOutputCommand(index=0, control_code=ControlCode.TRIP_CLOSE_TRIP | ControlCode.TRIP_CLOSE_CLOSE)
+            BinaryOutputCommand(
+                index=0, control_code=ControlCode.TRIP_CLOSE_TRIP | ControlCode.TRIP_CLOSE_CLOSE
+            )
 
 
 class TestAnalogInput:

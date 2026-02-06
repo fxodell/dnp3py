@@ -1,16 +1,17 @@
 """Tests for DNP3 Application Layer."""
 
 import pytest
+
+from dnp3py.core.config import AppLayerFunction, IINFlags, QualifierCode
+from dnp3py.core.exceptions import DNP3ObjectError, DNP3ProtocolError
 from dnp3py.layers.application import (
+    FIN_FLAG,
+    FIR_FLAG,
     ApplicationLayer,
     ApplicationRequest,
     ApplicationResponse,
     ObjectHeader,
-    FIR_FLAG,
-    FIN_FLAG,
 )
-from dnp3py.core.config import AppLayerFunction, QualifierCode, IINFlags
-from dnp3py.core.exceptions import DNP3ProtocolError, DNP3ObjectError
 
 
 class TestObjectHeader:
@@ -26,7 +27,7 @@ class TestObjectHeader:
         data = header.to_bytes()
 
         assert data[0] == 60  # Group
-        assert data[1] == 1   # Variation
+        assert data[1] == 1  # Variation
         assert data[2] == QualifierCode.ALL_OBJECTS
 
     def test_to_bytes_uint8_start_stop(self):
@@ -111,9 +112,7 @@ class TestObjectHeader:
 
     def test_to_bytes_uint8_count_out_of_range(self):
         """Test UINT8 count out of range raises error."""
-        header = ObjectHeader(
-            group=1, variation=2, qualifier=QualifierCode.UINT8_COUNT, count=256
-        )
+        header = ObjectHeader(group=1, variation=2, qualifier=QualifierCode.UINT8_COUNT, count=256)
         with pytest.raises(DNP3ObjectError, match="UINT8 count"):
             header.to_bytes()
 
@@ -377,14 +376,21 @@ class TestApplicationResponseDataOffset:
         """Test that response parsing calculates correct data offsets."""
         # Build a response with binary inputs (group 1, variation 2)
         # Control + Function + IIN1 + IIN2 + ObjHeader(g1v2, q=0x00, start=0, stop=1) + 2 bytes data
-        data = bytes([
-            0xC0,  # Control: FIR|FIN, seq=0
-            0x81,  # Function: Response
-            0x00, 0x00,  # IIN1, IIN2
-            0x01, 0x02, 0x00,  # Group 1, Variation 2, Qualifier UINT8_START_STOP
-            0x00, 0x01,  # Range: 0 to 1 (2 points)
-            0x81, 0x01,  # Data: 2 bytes for 2 binary inputs with flags
-        ])
+        data = bytes(
+            [
+                0xC0,  # Control: FIR|FIN, seq=0
+                0x81,  # Function: Response
+                0x00,
+                0x00,  # IIN1, IIN2
+                0x01,
+                0x02,
+                0x00,  # Group 1, Variation 2, Qualifier UINT8_START_STOP
+                0x00,
+                0x01,  # Range: 0 to 1 (2 points)
+                0x81,
+                0x01,  # Data: 2 bytes for 2 binary inputs with flags
+            ]
+        )
 
         response = ApplicationResponse.from_bytes(data)
 
@@ -399,13 +405,32 @@ class TestApplicationResponseDataOffset:
     def test_response_with_multiple_objects(self):
         """Test response with multiple object headers."""
         # Response with binary inputs and analog inputs
-        data = bytes([
-            0xC0, 0x81, 0x00, 0x00,  # Header
-            # Object 1: Group 1, Var 2, Q=0x00, range 0-0 (1 point), 1 byte data
-            0x01, 0x02, 0x00, 0x00, 0x00, 0x81,
-            # Object 2: Group 30, Var 1, Q=0x00, range 0-0 (1 point), 5 bytes data
-            0x1E, 0x01, 0x00, 0x00, 0x00, 0x01, 0x64, 0x00, 0x00, 0x00,
-        ])
+        data = bytes(
+            [
+                0xC0,
+                0x81,
+                0x00,
+                0x00,  # Header
+                # Object 1: Group 1, Var 2, Q=0x00, range 0-0 (1 point), 1 byte data
+                0x01,
+                0x02,
+                0x00,
+                0x00,
+                0x00,
+                0x81,
+                # Object 2: Group 30, Var 1, Q=0x00, range 0-0 (1 point), 5 bytes data
+                0x1E,
+                0x01,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0x64,
+                0x00,
+                0x00,
+                0x00,
+            ]
+        )
 
         response = ApplicationResponse.from_bytes(data)
 

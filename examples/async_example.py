@@ -6,15 +6,12 @@ This demonstrates how to use the DNP3 driver with background polling
 and event handling.
 """
 
-import sys
-import time
 import threading
-from queue import Queue
+import time
+from queue import Empty, Queue
 from typing import Optional
 
-sys.path.insert(0, "../..")
-
-from dnp3py import DNP3Master, DNP3Config
+from dnp3py import DNP3Config, DNP3Master
 from dnp3py.core.config import IINFlags
 from dnp3py.utils.logging import setup_logging
 
@@ -196,7 +193,7 @@ def main():
             try:
                 event_type, data = client.event_queue.get(timeout=1.0)
                 print(f"Event: {event_type} - {data}")
-            except:
+            except Empty:
                 pass  # Queue timeout, continue
 
     except KeyboardInterrupt:

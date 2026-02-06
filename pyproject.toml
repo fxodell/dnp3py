@@ -1,0 +1,31 @@
+# Build and tool config. Setuptools reads setup.py for package metadata and layout.
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+# Run: bandit -r . -c pyproject.toml
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+exclude = [".venv", "venv", ".git", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501", "N806"]  # E501: line length; N806: allow CONST in function (e.g. config validate)
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pyright]
+pythonVersion = "3.9"
+typeCheckingMode = "basic"
+# Resolve dnp3py.* only when package is installed (repo root is package_dir dnp3py)
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedVariable = true
+exclude = ["tests", ".venv", "venv"]

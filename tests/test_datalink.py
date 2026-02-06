@@ -1,14 +1,14 @@
 """Tests for DNP3 Data Link Layer."""
 
 import pytest
+
+from dnp3py.core.exceptions import DNP3CRCError, DNP3FrameError
 from dnp3py.layers.datalink import (
-    DataLinkLayer,
-    DataLinkFrame,
     START_BYTES,
     ControlByte,
-    PrimaryFunction,
+    DataLinkFrame,
+    DataLinkLayer,
 )
-from dnp3py.core.exceptions import DNP3CRCError, DNP3FrameError
 
 
 class TestDataLinkLayer:
@@ -220,6 +220,7 @@ class TestDataLinkLayer:
         invalid_frame = bytes([0x05, 0x64, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00])
         # Add a valid CRC for the header
         from dnp3py.utils.crc import CRC16DNP3
+
         invalid_frame += CRC16DNP3.calculate_bytes(invalid_frame)
 
         with pytest.raises(DNP3FrameError):

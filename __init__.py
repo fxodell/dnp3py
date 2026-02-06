@@ -31,15 +31,15 @@ References:
     - DNP3 Technical Bulletin TB2004-001
 """
 
-from dnp3py.core.master import DNP3Master
 from dnp3py.core.config import DNP3Config
 from dnp3py.core.exceptions import (
-    DNP3Error,
     DNP3CommunicationError,
-    DNP3TimeoutError,
-    DNP3ProtocolError,
     DNP3CRCError,
+    DNP3Error,
+    DNP3ProtocolError,
+    DNP3TimeoutError,
 )
+from dnp3py.core.master import DNP3Master
 
 __version__ = "1.0.0"
 __author__ = "DNP3 Driver Development"

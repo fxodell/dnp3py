@@ -12,20 +12,19 @@ Transport Header (1 byte):
 Maximum segment payload: 249 bytes (250 - 1 byte header)
 """
 
-from dataclasses import dataclass
 import time
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Optional
 
 from dnp3py.core.exceptions import DNP3FrameError
 
-
 # Transport layer constants
 MAX_SEGMENT_PAYLOAD = 249  # Max bytes per segment (250 - 1 header byte)
-SEQUENCE_MASK = 0x3F       # 6-bit sequence number (0-63)
-SEQUENCE_MODULUS = 64      # Sequence numbers wrap at 64
-FIR_FLAG = 0x40            # First segment flag
-FIN_FLAG = 0x80            # Final segment flag
-MAX_MESSAGE_SIZE = 65536   # Maximum reassembled message size (64KB protection limit)
+SEQUENCE_MASK = 0x3F  # 6-bit sequence number (0-63)
+SEQUENCE_MODULUS = 64  # Sequence numbers wrap at 64
+FIR_FLAG = 0x40  # First segment flag
+FIN_FLAG = 0x80  # Final segment flag
+MAX_MESSAGE_SIZE = 65536  # Maximum reassembled message size (64KB protection limit)
 DEFAULT_REASSEMBLY_TIMEOUT = 5.0  # Default timeout for multi-segment reassembly
 
 
@@ -92,9 +91,7 @@ class TransportSegment:
         """
         # Sequence must be in valid range (0-63)
         if not 0 <= self.sequence <= SEQUENCE_MASK:
-            raise DNP3FrameError(
-                f"Invalid sequence number: {self.sequence}, must be 0-63"
-            )
+            raise DNP3FrameError(f"Invalid sequence number: {self.sequence}, must be 0-63")
 
         # Payload size check
         if len(self.payload) > MAX_SEGMENT_PAYLOAD:
@@ -130,7 +127,7 @@ class TransportLayer:
         self._rx_start_time: Optional[float] = None
         self._rx_timeout_seconds: Optional[float] = None
 
-    def segment(self, apdu: bytes, max_payload: int = MAX_SEGMENT_PAYLOAD) -> List[bytes]:
+    def segment(self, apdu: bytes, max_payload: int = MAX_SEGMENT_PAYLOAD) -> list[bytes]:
         """
         Segment an Application Protocol Data Unit (APDU) for transmission.
 
@@ -170,10 +167,10 @@ class TransportLayer:
         while offset < total_length:
             remaining = total_length - offset
             payload_size = min(remaining, max_payload)
-            payload = apdu[offset:offset + payload_size]
+            payload = apdu[offset : offset + payload_size]
 
-            is_first = (offset == 0)
-            is_final = (offset + payload_size >= total_length)
+            is_first = offset == 0
+            is_final = offset + payload_size >= total_length
 
             segment = TransportSegment(
                 sequence=self._tx_sequence,
@@ -192,7 +189,7 @@ class TransportLayer:
         self,
         segment_data: bytes,
         timeout_seconds: Optional[float] = None,
-    ) -> Tuple[Optional[bytes], bool]:
+    ) -> tuple[Optional[bytes], bool]:
         """
         Process a received transport segment and attempt reassembly.
 
@@ -336,9 +333,7 @@ class TransportLayer:
                 f"Transport header must be an integer (0-255), got {type(header_byte).__name__}"
             ) from e
         if not 0 <= header_byte <= 255:
-            raise DNP3FrameError(
-                f"Transport header out of range: {header_byte} (must be 0-255)"
-            )
+            raise DNP3FrameError(f"Transport header out of range: {header_byte} (must be 0-255)")
         return {
             "sequence": header_byte & SEQUENCE_MASK,
             "is_first": bool(header_byte & FIR_FLAG),

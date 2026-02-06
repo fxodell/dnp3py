@@ -1,6 +1,7 @@
 """Tests for DNP3 CRC-16 calculation."""
 
 import pytest
+
 from dnp3py.utils.crc import CRC16DNP3, calculate_frame_crc
 
 
@@ -82,7 +83,7 @@ class TestCRC16DNP3:
         data = b"test"
         result = CRC16DNP3.append_crc(data)
         assert len(result) == len(data) + 2
-        assert result[:len(data)] == data
+        assert result[: len(data)] == data
 
         # Verify appended CRC
         crc_bytes = result[-2:]

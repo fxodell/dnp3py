@@ -7,11 +7,10 @@ Counter objects represent accumulated count values such as:
 - Transaction counts
 """
 
-from dataclasses import dataclass
-from typing import Optional, List
-from enum import IntFlag
 import struct
-
+from dataclasses import dataclass
+from enum import IntFlag
+from typing import Optional
 
 # Required bytes per object for Counter.from_bytes and parse_counters (variation -> size)
 COUNTER_VARIATION_SIZES = {1: 5, 2: 3, 3: 5, 4: 3, 5: 4, 6: 2, 7: 4, 8: 2}
@@ -20,14 +19,14 @@ COUNTER_VARIATION_SIZES = {1: 5, 2: 3, 3: 5, 4: 3, 5: 4, 6: 2, 7: 4, 8: 2}
 class CounterFlags(IntFlag):
     """Flags byte for counter objects."""
 
-    ONLINE = 0x01           # Point is online
-    RESTART = 0x02          # Point has been restarted
-    COMM_LOST = 0x04        # Communication lost
-    REMOTE_FORCED = 0x08    # Value forced by remote
-    LOCAL_FORCED = 0x10     # Value forced by local
-    ROLLOVER = 0x20         # Counter has rolled over
-    DISCONTINUITY = 0x40    # Value discontinuity
-    RESERVED = 0x80         # Reserved
+    ONLINE = 0x01  # Point is online
+    RESTART = 0x02  # Point has been restarted
+    COMM_LOST = 0x04  # Communication lost
+    REMOTE_FORCED = 0x08  # Value forced by remote
+    LOCAL_FORCED = 0x10  # Value forced by local
+    ROLLOVER = 0x20  # Counter has rolled over
+    DISCONTINUITY = 0x40  # Value discontinuity
+    RESERVED = 0x80  # Reserved
 
 
 @dataclass
@@ -125,7 +124,9 @@ class Counter:
         try:
             val = int(self.value)
         except (TypeError, ValueError) as e:
-            raise TypeError(f"Counter value must be an integer, got {type(self.value).__name__}") from e
+            raise TypeError(
+                f"Counter value must be an integer, got {type(self.value).__name__}"
+            ) from e
 
         result = bytearray()
 
@@ -138,23 +139,17 @@ class Counter:
             result.extend(struct.pack("<I", val))
         elif variation == 2:
             if not 0 <= val <= 65535:
-                raise ValueError(
-                    f"Value {val} out of range for 16-bit unsigned counter (0-65535)"
-                )
+                raise ValueError(f"Value {val} out of range for 16-bit unsigned counter (0-65535)")
             result.append(self.flags)
             result.extend(struct.pack("<H", val))
         elif variation == 3:
             if not -2147483648 <= val <= 2147483647:
-                raise ValueError(
-                    f"Value {val} out of range for 32-bit signed delta"
-                )
+                raise ValueError(f"Value {val} out of range for 32-bit signed delta")
             result.append(self.flags)
             result.extend(struct.pack("<i", val))
         elif variation == 4:
             if not -32768 <= val <= 32767:
-                raise ValueError(
-                    f"Value {val} out of range for 16-bit signed delta"
-                )
+                raise ValueError(f"Value {val} out of range for 16-bit signed delta")
             result.append(self.flags)
             result.extend(struct.pack("<h", val))
         elif variation == 5:
@@ -165,21 +160,15 @@ class Counter:
             result.extend(struct.pack("<I", val))
         elif variation == 6:
             if not 0 <= val <= 65535:
-                raise ValueError(
-                    f"Value {val} out of range for 16-bit unsigned counter (0-65535)"
-                )
+                raise ValueError(f"Value {val} out of range for 16-bit unsigned counter (0-65535)")
             result.extend(struct.pack("<H", val))
         elif variation == 7:
             if not -2147483648 <= val <= 2147483647:
-                raise ValueError(
-                    f"Value {val} out of range for 32-bit signed delta"
-                )
+                raise ValueError(f"Value {val} out of range for 32-bit signed delta")
             result.extend(struct.pack("<i", val))
         elif variation == 8:
             if not -32768 <= val <= 32767:
-                raise ValueError(
-                    f"Value {val} out of range for 16-bit signed delta"
-                )
+                raise ValueError(f"Value {val} out of range for 16-bit signed delta")
             result.extend(struct.pack("<h", val))
         else:
             raise ValueError(f"Unsupported counter variation: {variation}")
@@ -237,7 +226,7 @@ def parse_counters(
     start_index: int,
     count: int,
     variation: int,
-) -> List[Counter]:
+) -> list[Counter]:
     """
     Parse multiple counters from response data.
 
@@ -268,7 +257,9 @@ def parse_counters(
     for i in range(count):
         if offset + obj_size > len(data):
             break
-        counters.append(Counter.from_bytes(data[offset:offset + obj_size], start_index + i, variation))
+        counters.append(
+            Counter.from_bytes(data[offset : offset + obj_size], start_index + i, variation)
+        )
         offset += obj_size
 
     return counters

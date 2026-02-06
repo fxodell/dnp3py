@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Quick test of dnp3py with specified connection parameters."""
 
-from dnp3py import DNP3Master, DNP3Config
+from dnp3py import DNP3Config, DNP3Master
 from dnp3py.utils.logging import setup_logging
+
 
 def main():
     setup_logging(level="INFO")
@@ -54,6 +55,7 @@ def main():
     finally:
         master.close()
         print("\nDisconnected.")
+
 
 if __name__ == "__main__":
     main()

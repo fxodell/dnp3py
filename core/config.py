@@ -1,7 +1,6 @@
 """DNP3 driver configuration."""
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 from enum import IntEnum
 
 
@@ -68,16 +67,16 @@ class QualifierCode(IntEnum):
     """Object header qualifier codes."""
 
     # 8-bit index prefix codes
-    UINT8_START_STOP = 0x00      # 8-bit start and stop indices
-    UINT16_START_STOP = 0x01    # 16-bit start and stop indices
-    ALL_OBJECTS = 0x06          # All objects (no range field)
-    UINT8_COUNT = 0x07          # 8-bit single field count
-    UINT16_COUNT = 0x08         # 16-bit single field count
+    UINT8_START_STOP = 0x00  # 8-bit start and stop indices
+    UINT16_START_STOP = 0x01  # 16-bit start and stop indices
+    ALL_OBJECTS = 0x06  # All objects (no range field)
+    UINT8_COUNT = 0x07  # 8-bit single field count
+    UINT16_COUNT = 0x08  # 16-bit single field count
 
     # With object prefix
-    UINT8_COUNT_UINT8_INDEX = 0x17   # 8-bit count with 8-bit index prefix
+    UINT8_COUNT_UINT8_INDEX = 0x17  # 8-bit count with 8-bit index prefix
     UINT8_COUNT_UINT16_INDEX = 0x28  # 8-bit count with 16-bit index prefix
-    UINT16_COUNT_UINT16_INDEX = 0x29 # 16-bit count with 16-bit index prefix
+    UINT16_COUNT_UINT16_INDEX = 0x29  # 16-bit count with 16-bit index prefix
 
     # Variable-sized objects
     FREE_FORMAT_UINT16_COUNT = 0x5B  # Free format with 16-bit count
@@ -86,11 +85,11 @@ class QualifierCode(IntEnum):
 class ControlCode(IntEnum):
     """Control Relay Output Block (CROB) control codes."""
 
-    NUL = 0x00           # No operation
-    PULSE_ON = 0x01      # Pulse on
-    PULSE_OFF = 0x02     # Pulse off
-    LATCH_ON = 0x03      # Latch on
-    LATCH_OFF = 0x04     # Latch off
+    NUL = 0x00  # No operation
+    PULSE_ON = 0x01  # Pulse on
+    PULSE_OFF = 0x02  # Pulse off
+    LATCH_ON = 0x03  # Latch on
+    LATCH_OFF = 0x04  # Latch off
 
     # Queue flag (OR with above)
     QUEUE = 0x10
@@ -128,24 +127,24 @@ class IINFlags:
     """Internal Indications (IIN) bit flags from outstation responses."""
 
     # First octet (IIN1)
-    broadcast: bool = False           # Bit 0: Message was broadcast
-    class_1_events: bool = False      # Bit 1: Class 1 events available
-    class_2_events: bool = False      # Bit 2: Class 2 events available
-    class_3_events: bool = False      # Bit 3: Class 3 events available
-    need_time: bool = False           # Bit 4: Time sync required
-    local_control: bool = False       # Bit 5: Some outputs in local mode
-    device_trouble: bool = False      # Bit 6: Device trouble
-    device_restart: bool = False      # Bit 7: Device has restarted
+    broadcast: bool = False  # Bit 0: Message was broadcast
+    class_1_events: bool = False  # Bit 1: Class 1 events available
+    class_2_events: bool = False  # Bit 2: Class 2 events available
+    class_3_events: bool = False  # Bit 3: Class 3 events available
+    need_time: bool = False  # Bit 4: Time sync required
+    local_control: bool = False  # Bit 5: Some outputs in local mode
+    device_trouble: bool = False  # Bit 6: Device trouble
+    device_restart: bool = False  # Bit 7: Device has restarted
 
     # Second octet (IIN2)
-    no_func_code_support: bool = False    # Bit 0: Function code not supported
-    object_unknown: bool = False          # Bit 1: Requested objects unknown
-    parameter_error: bool = False         # Bit 2: Parameters invalid
-    event_buffer_overflow: bool = False   # Bit 3: Event buffer overflow
-    already_executing: bool = False       # Bit 4: Operation already executing
-    config_corrupt: bool = False          # Bit 5: Configuration corrupt
-    reserved_2_6: bool = False            # Bit 6: Reserved
-    reserved_2_7: bool = False            # Bit 7: Reserved
+    no_func_code_support: bool = False  # Bit 0: Function code not supported
+    object_unknown: bool = False  # Bit 1: Requested objects unknown
+    parameter_error: bool = False  # Bit 2: Parameters invalid
+    event_buffer_overflow: bool = False  # Bit 3: Event buffer overflow
+    already_executing: bool = False  # Bit 4: Operation already executing
+    config_corrupt: bool = False  # Bit 5: Configuration corrupt
+    reserved_2_6: bool = False  # Bit 6: Reserved
+    reserved_2_7: bool = False  # Bit 7: Reserved
 
     @classmethod
     def from_bytes(cls, iin1: int, iin2: int) -> "IINFlags":
@@ -184,34 +183,34 @@ class IINFlags:
     def to_bytes(self) -> tuple[int, int]:
         """Convert flags to IIN bytes."""
         iin1 = (
-            (0x01 if self.broadcast else 0) |
-            (0x02 if self.class_1_events else 0) |
-            (0x04 if self.class_2_events else 0) |
-            (0x08 if self.class_3_events else 0) |
-            (0x10 if self.need_time else 0) |
-            (0x20 if self.local_control else 0) |
-            (0x40 if self.device_trouble else 0) |
-            (0x80 if self.device_restart else 0)
+            (0x01 if self.broadcast else 0)
+            | (0x02 if self.class_1_events else 0)
+            | (0x04 if self.class_2_events else 0)
+            | (0x08 if self.class_3_events else 0)
+            | (0x10 if self.need_time else 0)
+            | (0x20 if self.local_control else 0)
+            | (0x40 if self.device_trouble else 0)
+            | (0x80 if self.device_restart else 0)
         )
         iin2 = (
-            (0x01 if self.no_func_code_support else 0) |
-            (0x02 if self.object_unknown else 0) |
-            (0x04 if self.parameter_error else 0) |
-            (0x08 if self.event_buffer_overflow else 0) |
-            (0x10 if self.already_executing else 0) |
-            (0x20 if self.config_corrupt else 0) |
-            (0x40 if self.reserved_2_6 else 0) |
-            (0x80 if self.reserved_2_7 else 0)
+            (0x01 if self.no_func_code_support else 0)
+            | (0x02 if self.object_unknown else 0)
+            | (0x04 if self.parameter_error else 0)
+            | (0x08 if self.event_buffer_overflow else 0)
+            | (0x10 if self.already_executing else 0)
+            | (0x20 if self.config_corrupt else 0)
+            | (0x40 if self.reserved_2_6 else 0)
+            | (0x80 if self.reserved_2_7 else 0)
         )
         return iin1, iin2
 
     def has_errors(self) -> bool:
         """Check if any error flags are set."""
         return (
-            self.no_func_code_support or
-            self.object_unknown or
-            self.parameter_error or
-            self.config_corrupt
+            self.no_func_code_support
+            or self.object_unknown
+            or self.parameter_error
+            or self.config_corrupt
         )
 
     def has_reserved_bits(self) -> bool:
@@ -228,13 +227,13 @@ class DNP3Config:
     port: int = 20000
 
     # DNP3 addressing
-    master_address: int = 1       # Master station address (0-65534)
+    master_address: int = 1  # Master station address (0-65534)
     outstation_address: int = 10  # Outstation address (0-65534)
 
     # Timing settings (in seconds)
     response_timeout: float = 5.0
     connection_timeout: float = 10.0
-    select_timeout: float = 10.0     # Time between SELECT and OPERATE
+    select_timeout: float = 10.0  # Time between SELECT and OPERATE
 
     # Retry settings
     max_retries: int = 3
@@ -242,17 +241,17 @@ class DNP3Config:
 
     # Data link layer settings
     confirm_required: bool = True
-    max_frame_size: int = 250        # Max user data per frame (protocol limit: 250)
+    max_frame_size: int = 250  # Max user data per frame (protocol limit: 250)
 
     # Application layer settings
-    max_apdu_size: int = 2048        # Max application layer PDU size
+    max_apdu_size: int = 2048  # Max application layer PDU size
     enable_unsolicited: bool = True
 
     # Class polling intervals (in seconds, 0 = disabled)
-    class_0_poll_interval: float = 60.0   # Integrity poll
-    class_1_poll_interval: float = 5.0    # High priority events
-    class_2_poll_interval: float = 10.0   # Medium priority events
-    class_3_poll_interval: float = 30.0   # Low priority events
+    class_0_poll_interval: float = 60.0  # Integrity poll
+    class_1_poll_interval: float = 5.0  # High priority events
+    class_2_poll_interval: float = 10.0  # Medium priority events
+    class_3_poll_interval: float = 30.0  # Low priority events
 
     # Logging
     log_level: str = "INFO"
@@ -294,7 +293,9 @@ class DNP3Config:
         try:
             master_address = int(self.master_address)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Master address must be an integer, got {self.master_address!r}") from e
+            raise ValueError(
+                f"Master address must be an integer, got {self.master_address!r}"
+            ) from e
         if not 0 <= master_address <= MAX_VALID_ADDRESS:
             raise ValueError(
                 f"Master address must be 0-65519 (0xFFEF), got {master_address}. "
@@ -305,7 +306,9 @@ class DNP3Config:
         try:
             outstation_address = int(self.outstation_address)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Outstation address must be an integer, got {self.outstation_address!r}") from e
+            raise ValueError(
+                f"Outstation address must be an integer, got {self.outstation_address!r}"
+            ) from e
         if not 0 <= outstation_address <= MAX_VALID_ADDRESS:
             raise ValueError(
                 f"Outstation address must be 0-65519 (0xFFEF), got {outstation_address}. "
@@ -344,7 +347,9 @@ class DNP3Config:
         try:
             max_frame_size = int(self.max_frame_size)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"max_frame_size must be an integer, got {self.max_frame_size!r}") from e
+            raise ValueError(
+                f"max_frame_size must be an integer, got {self.max_frame_size!r}"
+            ) from e
         if not 1 <= max_frame_size <= 250:
             raise ValueError(f"max_frame_size must be 1-250, got {max_frame_size}")
         self.max_frame_size = max_frame_size
@@ -359,7 +364,12 @@ class DNP3Config:
         self.max_apdu_size = max_apdu_size
 
         # Poll intervals (0 = disabled); coerce to float
-        for name in ("class_0_poll_interval", "class_1_poll_interval", "class_2_poll_interval", "class_3_poll_interval"):
+        for name in (
+            "class_0_poll_interval",
+            "class_1_poll_interval",
+            "class_2_poll_interval",
+            "class_3_poll_interval",
+        ):
             try:
                 val = float(getattr(self, name))
             except (TypeError, ValueError) as e:

@@ -8,34 +8,40 @@ Use the connect() context manager or open()/close() for connection life cycle.
 """
 
 import socket
-import time
 import threading
-from typing import Optional, List, Callable, Union
-from dataclasses import dataclass, field
+import time
 from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Callable, Optional, Union
 
 from dnp3py.core.config import (
-    DNP3Config,
     AppLayerFunction,
-    QualifierCode,
-    IINFlags,
     ControlStatus,
+    DNP3Config,
+    IINFlags,
+    QualifierCode,
 )
 from dnp3py.core.exceptions import (
-    DNP3Error,
     DNP3CommunicationError,
-    DNP3TimeoutError,
-    DNP3ProtocolError,
     DNP3CRCError,
+    DNP3Error,
     DNP3FrameError,
-    DNP3ControlError,
+    DNP3ProtocolError,
+    DNP3TimeoutError,
 )
-from dnp3py.layers.datalink import DataLinkLayer, DataLinkFrame
-from dnp3py.layers.transport import TransportLayer
 from dnp3py.layers.application import (
     ApplicationLayer,
     ApplicationResponse,
     ObjectHeader,
+)
+from dnp3py.layers.datalink import DataLinkFrame, DataLinkLayer
+from dnp3py.layers.transport import TransportLayer
+from dnp3py.objects.analog import (
+    AnalogInput,
+    AnalogOutput,
+    AnalogOutputCommand,
+    parse_analog_inputs,
+    parse_analog_outputs,
 )
 from dnp3py.objects.binary import (
     BinaryInput,
@@ -43,13 +49,6 @@ from dnp3py.objects.binary import (
     BinaryOutputCommand,
     parse_binary_inputs,
     parse_binary_outputs,
-)
-from dnp3py.objects.analog import (
-    AnalogInput,
-    AnalogOutput,
-    AnalogOutputCommand,
-    parse_analog_inputs,
-    parse_analog_outputs,
 )
 from dnp3py.objects.counter import Counter, parse_counters
 from dnp3py.objects.groups import ObjectGroup, ObjectVariation, get_object_size
@@ -62,11 +61,11 @@ class PollResult:
 
     success: bool
     iin: Optional[IINFlags] = None
-    binary_inputs: List[BinaryInput] = field(default_factory=list)
-    binary_outputs: List[BinaryOutput] = field(default_factory=list)
-    analog_inputs: List[AnalogInput] = field(default_factory=list)
-    analog_outputs: List[AnalogOutput] = field(default_factory=list)
-    counters: List[Counter] = field(default_factory=list)
+    binary_inputs: list[BinaryInput] = field(default_factory=list)
+    binary_outputs: list[BinaryOutput] = field(default_factory=list)
+    analog_inputs: list[AnalogInput] = field(default_factory=list)
+    analog_outputs: list[AnalogOutput] = field(default_factory=list)
+    counters: list[Counter] = field(default_factory=list)
     error: Optional[str] = None
     raw_response: Optional[bytes] = None
 
@@ -169,7 +168,7 @@ class DNP3Master:
                 if sock:
                     try:
                         sock.close()
-                    except Exception:
+                    except Exception:  # nosec B110 - best-effort close on timeout
                         pass
                 self._socket = None
                 self._connected = False
@@ -177,11 +176,11 @@ class DNP3Master:
                     f"Connection timeout to {self.config.host}:{self.config.port}",
                     timeout_seconds=self.config.connection_timeout,
                 ) from e
-            except socket.error as e:
+            except OSError as e:
                 if sock:
                     try:
                         sock.close()
-                    except Exception:
+                    except Exception:  # nosec B110 - best-effort close on connect error
                         pass
                 self._socket = None
                 self._connected = False
@@ -197,7 +196,7 @@ class DNP3Master:
             if self._socket:
                 try:
                     self._socket.close()
-                except Exception:
+                except Exception:  # nosec B110 - best-effort close
                     pass
                 self._socket = None
             self._connected = False
@@ -225,7 +224,7 @@ class DNP3Master:
             if self.config.log_raw_frames:
                 log_frame(frame, "TX", self._logger)
             self._socket.sendall(frame)
-        except socket.error as e:
+        except OSError as e:
             raise DNP3CommunicationError(
                 f"Send failed: {e}",
                 host=self.config.host,
@@ -287,7 +286,9 @@ class DNP3Master:
                         if self.config.log_raw_frames:
                             log_frame(bytes(self._rx_buffer[:frame_size]), "RX", self._logger)
 
-                        frame, consumed = self._datalink.parse_frame(bytes(self._rx_buffer[:frame_size]))
+                        frame, consumed = self._datalink.parse_frame(
+                            bytes(self._rx_buffer[:frame_size])
+                        )
                         del self._rx_buffer[:consumed]
 
                         return frame
@@ -313,7 +314,7 @@ class DNP3Master:
                 self._rx_buffer.extend(data)
             except socket.timeout:
                 raise DNP3TimeoutError("Response timeout", timeout_seconds=timeout)
-            except socket.error as e:
+            except OSError as e:
                 raise DNP3CommunicationError(
                     f"Receive failed: {e}",
                     host=self.config.host,
@@ -377,7 +378,7 @@ class DNP3Master:
         self._transport.reset()  # Reset transport layer state
 
         # Storage for multi-fragment responses
-        fragments: List[ApplicationResponse] = []
+        fragments: list[ApplicationResponse] = []
         max_fragments = 100  # Safety limit to prevent infinite loops
 
         while len(fragments) < max_fragments:
@@ -437,7 +438,7 @@ class DNP3Master:
 
         return self._merge_fragments(fragments)
 
-    def _merge_fragments(self, fragments: List[ApplicationResponse]) -> ApplicationResponse:
+    def _merge_fragments(self, fragments: list[ApplicationResponse]) -> ApplicationResponse:
         """
         Merge multiple application layer fragments into a single response.
 
@@ -558,7 +559,7 @@ class DNP3Master:
         self,
         start: int = 0,
         stop: int = 0,
-    ) -> List[BinaryInput]:
+    ) -> list[BinaryInput]:
         """
         Read binary input points.
 
@@ -586,7 +587,7 @@ class DNP3Master:
         self,
         start: int = 0,
         stop: int = 0,
-    ) -> List[AnalogInput]:
+    ) -> list[AnalogInput]:
         """
         Read analog input points.
 
@@ -614,7 +615,7 @@ class DNP3Master:
         self,
         start: int = 0,
         stop: int = 0,
-    ) -> List[Counter]:
+    ) -> list[Counter]:
         """
         Read counter points.
 
@@ -642,7 +643,7 @@ class DNP3Master:
         self,
         start: int = 0,
         stop: int = 0,
-    ) -> List[BinaryOutput]:
+    ) -> list[BinaryOutput]:
         """
         Read binary output status.
 
@@ -670,7 +671,7 @@ class DNP3Master:
         self,
         start: int = 0,
         stop: int = 0,
-    ) -> List[AnalogOutput]:
+    ) -> list[AnalogOutput]:
         """
         Read analog output status.
 
@@ -716,7 +717,11 @@ class DNP3Master:
             True if successful
         """
         if control_code is None:
-            cmd = BinaryOutputCommand.latch_on(index) if value else BinaryOutputCommand.latch_off(index)
+            cmd = (
+                BinaryOutputCommand.latch_on(index)
+                if value
+                else BinaryOutputCommand.latch_off(index)
+            )
         else:
             cmd = BinaryOutputCommand(index=index, control_code=control_code)
 
@@ -758,7 +763,11 @@ class DNP3Master:
             True if successful
         """
         if control_code is None:
-            cmd = BinaryOutputCommand.latch_on(index) if value else BinaryOutputCommand.latch_off(index)
+            cmd = (
+                BinaryOutputCommand.latch_on(index)
+                if value
+                else BinaryOutputCommand.latch_off(index)
+            )
         else:
             cmd = BinaryOutputCommand(index=index, control_code=control_code)
 
@@ -894,8 +903,10 @@ class DNP3Master:
             index_prefix_size = 0
             if qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
                 index_prefix_size = 1
-            elif qualifier in (QualifierCode.UINT8_COUNT_UINT16_INDEX,
-                             QualifierCode.UINT16_COUNT_UINT16_INDEX):
+            elif qualifier in (
+                QualifierCode.UINT8_COUNT_UINT16_INDEX,
+                QualifierCode.UINT16_COUNT_UINT16_INDEX,
+            ):
                 index_prefix_size = 2
 
             # CROB response (Group 12)
@@ -946,8 +957,7 @@ class DNP3Master:
 
                 if obj_size is None:
                     self._logger.warning(
-                        f"Skipping AOB response with unknown size: "
-                        f"variation={obj_header.variation}"
+                        f"Skipping AOB response with unknown size: variation={obj_header.variation}"
                     )
                     continue
 
@@ -1013,7 +1023,9 @@ class DNP3Master:
                 QualifierCode.UINT8_COUNT_UINT16_INDEX,
                 QualifierCode.UINT16_COUNT_UINT16_INDEX,
             ):
-                index_size = 1 if obj_header.qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX else 2
+                index_size = (
+                    1 if obj_header.qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX else 2
+                )
                 obj_size = get_object_size(group, variation)
                 if obj_size is None:
                     self._logger.warning(
@@ -1031,25 +1043,39 @@ class DNP3Master:
                         )
                         break
 
-                    index = int.from_bytes(raw_data[offset:offset + index_size], "little")
-                    obj_data = raw_data[offset + index_size:end]
+                    index = int.from_bytes(raw_data[offset : offset + index_size], "little")
+                    obj_data = raw_data[offset + index_size : end]
 
                     if group == ObjectGroup.BINARY_INPUT:
-                        result.binary_inputs.append(BinaryInput.from_bytes(obj_data, index, variation))
+                        result.binary_inputs.append(
+                            BinaryInput.from_bytes(obj_data, index, variation)
+                        )
                     elif group == ObjectGroup.BINARY_OUTPUT:
-                        result.binary_outputs.append(BinaryOutput.from_bytes(obj_data, index, variation))
+                        result.binary_outputs.append(
+                            BinaryOutput.from_bytes(obj_data, index, variation)
+                        )
                     elif group == ObjectGroup.ANALOG_INPUT:
-                        result.analog_inputs.append(AnalogInput.from_bytes(obj_data, index, variation))
+                        result.analog_inputs.append(
+                            AnalogInput.from_bytes(obj_data, index, variation)
+                        )
                     elif group == ObjectGroup.ANALOG_OUTPUT:
-                        result.analog_outputs.append(AnalogOutput.from_bytes(obj_data, index, variation))
+                        result.analog_outputs.append(
+                            AnalogOutput.from_bytes(obj_data, index, variation)
+                        )
                     elif group == ObjectGroup.COUNTER:
                         result.counters.append(Counter.from_bytes(obj_data, index, variation))
                     elif group == ObjectGroup.BINARY_INPUT_EVENT:
-                        result.binary_inputs.append(BinaryInput.from_bytes(obj_data, index, variation))
+                        result.binary_inputs.append(
+                            BinaryInput.from_bytes(obj_data, index, variation)
+                        )
                     elif group == ObjectGroup.BINARY_OUTPUT_EVENT:
-                        result.binary_outputs.append(BinaryOutput.from_bytes(obj_data, index, variation))
+                        result.binary_outputs.append(
+                            BinaryOutput.from_bytes(obj_data, index, variation)
+                        )
                     elif group == ObjectGroup.ANALOG_INPUT_EVENT:
-                        result.analog_inputs.append(AnalogInput.from_bytes(obj_data, index, variation))
+                        result.analog_inputs.append(
+                            AnalogInput.from_bytes(obj_data, index, variation)
+                        )
                     elif group == ObjectGroup.COUNTER_EVENT:
                         result.counters.append(Counter.from_bytes(obj_data, index, variation))
 
@@ -1076,7 +1102,7 @@ class DNP3Master:
                 )
                 continue
 
-            obj_data = raw_data[data_offset:data_offset + data_size]
+            obj_data = raw_data[data_offset : data_offset + data_size]
 
             if group == ObjectGroup.BINARY_INPUT:
                 result.binary_inputs.extend(
@@ -1118,27 +1144,27 @@ class DNP3Master:
 
         return result
 
-    def _parse_binary_inputs(self, response: ApplicationResponse) -> List[BinaryInput]:
+    def _parse_binary_inputs(self, response: ApplicationResponse) -> list[BinaryInput]:
         """Parse binary inputs from response."""
         result = self._parse_poll_response(response)
         return result.binary_inputs
 
-    def _parse_analog_inputs(self, response: ApplicationResponse) -> List[AnalogInput]:
+    def _parse_analog_inputs(self, response: ApplicationResponse) -> list[AnalogInput]:
         """Parse analog inputs from response."""
         result = self._parse_poll_response(response)
         return result.analog_inputs
 
-    def _parse_counters(self, response: ApplicationResponse) -> List[Counter]:
+    def _parse_counters(self, response: ApplicationResponse) -> list[Counter]:
         """Parse counters from response."""
         result = self._parse_poll_response(response)
         return result.counters
 
-    def _parse_binary_outputs(self, response: ApplicationResponse) -> List[BinaryOutput]:
+    def _parse_binary_outputs(self, response: ApplicationResponse) -> list[BinaryOutput]:
         """Parse binary outputs from response."""
         result = self._parse_poll_response(response)
         return result.binary_outputs
 
-    def _parse_analog_outputs(self, response: ApplicationResponse) -> List[AnalogOutput]:
+    def _parse_analog_outputs(self, response: ApplicationResponse) -> list[AnalogOutput]:
         """Parse analog outputs from response."""
         result = self._parse_poll_response(response)
         return result.analog_outputs
@@ -1187,11 +1213,29 @@ class DNP3Master:
         """
         objects = []
         if class_mask & 0x01:
-            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_1, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(
+                ObjectHeader(
+                    group=ObjectGroup.CLASS_OBJECTS,
+                    variation=ObjectVariation.CLASS_1,
+                    qualifier=QualifierCode.ALL_OBJECTS,
+                )
+            )
         if class_mask & 0x02:
-            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_2, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(
+                ObjectHeader(
+                    group=ObjectGroup.CLASS_OBJECTS,
+                    variation=ObjectVariation.CLASS_2,
+                    qualifier=QualifierCode.ALL_OBJECTS,
+                )
+            )
         if class_mask & 0x04:
-            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_3, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(
+                ObjectHeader(
+                    group=ObjectGroup.CLASS_OBJECTS,
+                    variation=ObjectVariation.CLASS_3,
+                    qualifier=QualifierCode.ALL_OBJECTS,
+                )
+            )
 
         apdu = self._application.build_request(AppLayerFunction.ENABLE_UNSOLICITED, objects)
         response = self._send_request(apdu)
@@ -1209,11 +1253,29 @@ class DNP3Master:
         """
         objects = []
         if class_mask & 0x01:
-            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_1, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(
+                ObjectHeader(
+                    group=ObjectGroup.CLASS_OBJECTS,
+                    variation=ObjectVariation.CLASS_1,
+                    qualifier=QualifierCode.ALL_OBJECTS,
+                )
+            )
         if class_mask & 0x02:
-            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_2, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(
+                ObjectHeader(
+                    group=ObjectGroup.CLASS_OBJECTS,
+                    variation=ObjectVariation.CLASS_2,
+                    qualifier=QualifierCode.ALL_OBJECTS,
+                )
+            )
         if class_mask & 0x04:
-            objects.append(ObjectHeader(group=ObjectGroup.CLASS_OBJECTS, variation=ObjectVariation.CLASS_3, qualifier=QualifierCode.ALL_OBJECTS))
+            objects.append(
+                ObjectHeader(
+                    group=ObjectGroup.CLASS_OBJECTS,
+                    variation=ObjectVariation.CLASS_3,
+                    qualifier=QualifierCode.ALL_OBJECTS,
+                )
+            )
 
         apdu = self._application.build_request(AppLayerFunction.DISABLE_UNSOLICITED, objects)
         response = self._send_request(apdu)

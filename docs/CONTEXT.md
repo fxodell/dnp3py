@@ -14,18 +14,25 @@
 
 ## Conventions and recent work
 
-- **Install**: `pip install -e .` from repo root (or `pip install -e ".[dev]"` for tests). `setup.py` maps `package_dir={"dnp3py": "."}` and excludes the `tests` package from installation; version is read from `__init__.py`. `dnp3py` is the top-level package. Subpackages use relative imports; public API is declared via `__all__` in each `__init__.py`.
-- **Git**: `.gitignore` covers bytecode, build/dist, `*.egg-info/`, venvs, IDE dirs, pytest/coverage and tool caches, `*.log`, and `.claude/settings.local.json`. The `dnp3py.egg-info/` directory is created by `pip install -e .` and is ignored; do not commit it.
+- **Install**: `pip install -e .` from repo root (or `pip install -e ".[dev]"` for tests, lint, and security). `setup.py` maps `package_dir={"dnp3py": "."}` and excludes the `tests` package from installation; version is read from `__init__.py`. Dev extras: pytest, pytest-cov, bandit, ruff, pyright. Config for bandit, ruff, and pyright lives in `pyproject.toml`. `dnp3py` is the top-level package. Subpackages use relative imports; public API is declared via `__all__` in each `__init__.py`.
+- **Git**: `.gitignore` covers bytecode, build/dist, `*.egg-info/`, venvs, IDE dirs, pytest/coverage and tool caches (e.g. `.ruff_cache/`, `.mypy_cache/`), `*.log`, and `.claude/settings.local.json`. The `dnp3py.egg-info/` directory is created by `pip install -e .` and is ignored; do not commit it.
 - **Config**: `DNP3Config.validate()` normalizes and validates host, port, addresses (0-65519), timeouts (float, positive), max_frame_size (1-250), max_apdu_size (1-65536), poll intervals (≥0), and log_level (DEBUG/INFO/WARNING/ERROR/CRITICAL); it coerces numeric fields and is called when creating a `DNP3Master`. `IINFlags.from_bytes` validates iin1/iin2.
 - **Objects**: Binary, analog, and counter modules validate input length and value ranges in `from_bytes`/`to_bytes` and in `parse_*`; invalid data raises clear `ValueError` or `TypeError`. Analog (`objects/analog.py`) validates `data` type, `index` ≥ 0, `variation` range (1–6 or 1–4), and value ranges; `AnalogOutputCommand.create()` and `parse_analog_inputs`/`parse_analog_outputs` validate their arguments.
 - **Layers**: Data Link validates addresses in `build_frame`, `build_request_link_status`, and `build_reset_link`; frame length and CRCs are validated on parse. Transport validates APDU length and `max_payload` in `segment()`, segment size in `from_bytes()`, and header in `parse_header()`; reassembly enforces sequence, size limit, and timeout. Application validates `ObjectHeader` (group/variation/qualifier and range/count) in `to_bytes()` and offset in `from_bytes()`; `build_confirm()` and `build_read_request()` validate sequence and group/variation/start/stop.
 - **Exceptions**: All DNP3 exceptions inherit from `DNP3Error`; subclasses expose optional context (e.g. `DNP3CommunicationError.host`/`port`, `DNP3TimeoutError.timeout_seconds`, `DNP3CRCError.expected_crc`/`actual_crc`, `DNP3ObjectError.group`/`variation`). Defined in `core/exceptions.py` with `__all__`; top-level `dnp3py` exports the five most common; `DNP3FrameError`, `DNP3ObjectError`, `DNP3ControlError` from `dnp3py.core`.
+- **Security**: No `eval`, `exec`, untrusted `__import__`, or `pickle.loads` on network data; parsing is binary-only. Bandit is run in CI; see README **Security** section for reporting.
 
-## Testing and scripts
+## Testing, lint, and CI
 
 - **Unit tests**: `pytest tests/ -v` from project root (with dnp3py installed).
+- **Lint**: `ruff check .` and `ruff format --check .` (config in `pyproject.toml`; target py39, line-length 100).
+- **Security**: `bandit -r . -c pyproject.toml -x tests,.venv,venv` (excludes tests; intentional try/except/pass in `core/master.py` are marked with `# nosec B110`).
+- **Type check** (optional): `pyright` (requires `reportMissingImports = false` in pyproject when package is not installed in the env).
+- **Local check** (full pass before push):  
+  `pytest tests/ -q && ruff check . && ruff format --check . && bandit -r . -c pyproject.toml -x tests,.venv,venv`
+- **CI** (`.github/workflows/ci.yml`): On push/PR to `main` or `master`, runs **test** (pytest on Python 3.9–3.12), **lint** (ruff check + format), and **security** (bandit).
 - **Live test**: Edit `test_connection.py` (host, port, outstation address) and run `python test_connection.py`.
-- **Examples**: `examples/basic_usage.py` (interactive), `examples/async_example.py` (background polling).
+- **Examples**: `examples/basic_usage.py` (interactive), `examples/async_example.py` (background polling). Examples assume `pip install -e .`; no `sys.path` hacks.
 
 ## References
 

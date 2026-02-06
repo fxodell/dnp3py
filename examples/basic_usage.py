@@ -10,7 +10,7 @@ Run from the project root with dnp3py installed: pip install -e .
 
 import time
 
-from dnp3py import DNP3Master, DNP3Config
+from dnp3py import DNP3Config, DNP3Master
 from dnp3py.utils.logging import setup_logging
 
 
@@ -22,8 +22,8 @@ def basic_read_example():
     # Configure connection to outstation
     config = DNP3Config(
         host="192.168.1.100",  # Replace with your outstation IP
-        port=20000,           # Standard DNP3 port
-        master_address=1,     # Master station address
+        port=20000,  # Standard DNP3 port
+        master_address=1,  # Master station address
         outstation_address=10,  # Outstation address
         response_timeout=5.0,
     )
@@ -203,12 +203,16 @@ def polling_loop_example():
             # Poll Class 1 (high priority events)
             result = master.read_class(1)
             if result.success and (result.binary_inputs or result.analog_inputs):
-                print(f"Class 1 events: {len(result.binary_inputs)} BI, {len(result.analog_inputs)} AI")
+                print(
+                    f"Class 1 events: {len(result.binary_inputs)} BI, {len(result.analog_inputs)} AI"
+                )
 
             # Poll Class 2 (medium priority events)
             result = master.read_class(2)
             if result.success and (result.binary_inputs or result.analog_inputs):
-                print(f"Class 2 events: {len(result.binary_inputs)} BI, {len(result.analog_inputs)} AI")
+                print(
+                    f"Class 2 events: {len(result.binary_inputs)} BI, {len(result.analog_inputs)} AI"
+                )
 
             time.sleep(1)  # Poll interval
 

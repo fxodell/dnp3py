@@ -4,7 +4,6 @@ import logging
 import sys
 from typing import Optional
 
-
 # Module-level logger
 _logger: Optional[logging.Logger] = None
 
@@ -35,9 +34,7 @@ def setup_logging(
     global _logger
 
     if not isinstance(level, str) or level.upper() not in _VALID_LEVELS:
-        raise ValueError(
-            f"level must be one of {sorted(_VALID_LEVELS)}, got {level!r}"
-        )
+        raise ValueError(f"level must be one of {sorted(_VALID_LEVELS)}, got {level!r}")
 
     if log_format is None:
         log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -91,9 +88,7 @@ def log_frame(frame: bytes, direction: str = "TX", logger: Optional[logging.Logg
         TypeError: If frame is not bytes or bytearray.
     """
     if not isinstance(frame, (bytes, bytearray)):
-        raise TypeError(
-            f"frame must be bytes or bytearray, got {type(frame).__name__}"
-        )
+        raise TypeError(f"frame must be bytes or bytearray, got {type(frame).__name__}")
     if logger is None:
         logger = get_logger()
 
@@ -118,9 +113,7 @@ def log_parsed_frame(
         TypeError: If frame_info is not a dict.
     """
     if not isinstance(frame_info, dict):
-        raise TypeError(
-            f"frame_info must be a dict, got {type(frame_info).__name__}"
-        )
+        raise TypeError(f"frame_info must be a dict, got {type(frame_info).__name__}")
     if logger is None:
         logger = get_logger()
 

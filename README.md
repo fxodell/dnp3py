@@ -248,6 +248,12 @@ To quickly test a live outstation, edit `test_connection.py` with your host, por
 python test_connection.py
 ```
 
+**Local check** (tests + lint + security, same as CI):
+
+```bash
+pytest tests/ -q && ruff check . && ruff format --check . && bandit -r . -c pyproject.toml -x tests,.venv,venv
+```
+
 ## References
 
 - IEEE Std 1815 - DNP3 Standard
@@ -256,7 +262,8 @@ python test_connection.py
 
 ## Development
 
-- **Setup**: `setup.py` uses `package_dir={"dnp3py": "."}` (repo root is the package); `find_packages()` excludes `tests` so the test suite is not installed. Version is read from `__init__.py` as the single source of truth. Long description is taken from `README.md`. Install dev dependencies with `pip install -e ".[dev]"` for pytest and pytest-cov.
+- **Setup**: `setup.py` uses `package_dir={"dnp3py": "."}` (repo root is the package); `find_packages()` excludes `tests` so the test suite is not installed. Version is read from `__init__.py` as the single source of truth. Long description is taken from `README.md`. Install dev dependencies with `pip install -e ".[dev]"` for pytest, pytest-cov, bandit, ruff, and pyright.
+- **Commands**: Run tests: `pytest tests/ -v`. Lint: `ruff check .` and `ruff format --check .`. Security: `bandit -r . -c pyproject.toml`. Type check: `pyright` (optional; requires `reportMissingImports = false` in pyproject until run from an env where `dnp3py` is installed).
 - **Git**: `.gitignore` excludes bytecode (`__pycache__/`, `*.pyc`), build artifacts (`build/`, `dist/`, `*.egg-info/`), virtual envs (`.venv/`, `venv/`), IDE/editor dirs (`.idea/`, `.vscode/`), test/cache (`.pytest_cache/`, `.coverage`, `htmlcov/`), tool caches (`.mypy_cache/`, `.ruff_cache/`), `*.log`, and `.claude/settings.local.json`; OS cruft (`.DS_Store`) is ignored. After `pip install -e .`, the `dnp3py.egg-info/` directory appears in the repo root; it is generated metadata and is correctly ignored—do not commit it.
 - **Package layout**: Install with `pip install -e .` from the repo root; `dnp3py` is the top-level package. The root `__init__.py` exports `DNP3Master`, `DNP3Config`, the exception classes (`DNP3Error`, `DNP3CommunicationError`, `DNP3TimeoutError`, `DNP3ProtocolError`, `DNP3CRCError`), and `__version__` via `__all__`. Subpackages use relative or absolute imports; each `__init__.py` exposes a public API via `__all__`.
 - **Core package**: `core/__init__.py` re-exports `DNP3Master`, `DNP3Config`, `PollResult` (return type of `integrity_poll()` and `read_class()`), and all eight DNP3 exception classes. The top-level `dnp3py` package exports only the five most common exceptions; use `from dnp3py.core import PollResult, DNP3FrameError`, etc., when needed.
@@ -268,6 +275,13 @@ python test_connection.py
 - **Layers**: `layers/__init__.py` re-exports `DataLinkLayer`, `TransportLayer`, and `ApplicationLayer`; frame, segment, and request/response types live in the datalink, transport, and application submodules. Data Link (`layers/datalink.py`) validates addresses in `build_frame`, `build_request_link_status`, and `build_reset_link`; `calculate_frame_size` validates the length byte; frame parsing checks CRCs and length. Transport (`layers/transport.py`) validates APDU length (≤ MAX_MESSAGE_SIZE) and `max_payload` (1..MAX_SEGMENT_PAYLOAD) in `segment()`; `TransportSegment.from_bytes` rejects oversized segments; `parse_header()` validates header byte 0-255; reassembly enforces sequence, size limit, and timeout. Application (`layers/application.py`) validates `ObjectHeader` group/variation/qualifier (0-255) and range/count per qualifier in `to_bytes()`; `ObjectHeader.from_bytes()` validates offset and range; `ApplicationRequest` validates sequence and function; `build_confirm()` and `build_read_request()` validate sequence (0-15) and group/variation/start/stop.
 - **Utils**: `utils/__init__.py` re-exports `CRC16DNP3`, `calculate_frame_crc`, `setup_logging`, `get_logger`, `log_frame`, and `log_parsed_frame`. `utils/crc.py` provides DNP3 CRC-16 (polynomial 0x3D65, reflected 0xA6BC, final XOR 0xFFFF); `CRC16DNP3.calculate()` and `calculate_frame_crc()` validate bytes/bytearray; `verify_bytes()` validates 2-byte CRC. `utils/logging.py` validates level (DEBUG/INFO/WARNING/ERROR/CRITICAL), uses UTF-8 for file output, sets `propagate=False`; `log_frame()` and `log_parsed_frame()` validate frame/frame_info types.
 - **Exceptions**: `core/exceptions.py` defines the hierarchy: `DNP3Error` (base); `DNP3CommunicationError` (host, port), `DNP3TimeoutError` (timeout_seconds), `DNP3ProtocolError` (function_code, iin), `DNP3CRCError` (expected_crc, actual_crc), `DNP3FrameError`, `DNP3ObjectError` (group, variation), `DNP3ControlError` (status_code). The top-level `dnp3py` package exports the first five; `DNP3FrameError`, `DNP3ObjectError`, and `DNP3ControlError` are available from `dnp3py.core`. All use `Optional` for context attributes.
+- **Publishing to PyPI**: (1) Create an account at [pypi.org](https://pypi.org/account/register/) and create an [API token](https://pypi.org/manage/account/token/). (2) Install build tools: `pip install build twine`. (3) Bump version in `__init__.py` if needed, then build: `python -m build`. (4) Upload: `twine upload dist/*` (use `__token__` as username and your token as password, or set `TWINE_USERNAME=__token__` and `TWINE_PASSWORD=pypi-...`). To test first, use Test PyPI: `twine upload --repository testpypi dist/*`.
+
+## Security
+
+- **No unsafe patterns**: The codebase does not use `eval`, `exec`, `__import__` with untrusted input, or `pickle.loads` on network data. Protocol parsing is binary-only; no code execution from DNP3 payloads.
+- **Checks**: Run `bandit -r . -c pyproject.toml` (excludes `tests/`) to scan for common issues. CI runs bandit on every push/PR.
+- **Reporting**: If you find a security concern, please report it privately (e.g. via the repository's security policy or maintainer contact) rather than in a public issue.
 
 ## License
 

@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 # Repo root is the dnp3py package (not a dnp3py/ subdir), so map it explicitly.
 _root = Path(__file__).resolve().parent
@@ -34,6 +34,13 @@ setup(
     long_description=_long_description,
     long_description_content_type="text/markdown",
     author="DNP3 Driver Development",
+    url="https://github.com/fxodell/dnp3py",
+    project_urls={
+        "Documentation": "https://github.com/fxodell/dnp3py#readme",
+        "Source": "https://github.com/fxodell/dnp3py",
+        "Changelog": "https://github.com/fxodell/dnp3py/releases",
+    },
+    license="MIT",
     package_dir={"dnp3py": "."},
     packages=packages,
     python_requires=">=3.9",
@@ -42,6 +49,9 @@ setup(
         "dev": [
             "pytest>=7.0",
             "pytest-cov>=4.0",
+            "bandit[toml]>=1.7.0",
+            "ruff>=0.8.0",
+            "pyright>=1.1.0",
         ],
     },
     classifiers=[

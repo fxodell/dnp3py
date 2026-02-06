@@ -9,10 +9,10 @@ Analog objects represent continuous values such as:
 - Pressures
 """
 
-from dataclasses import dataclass
-from typing import Optional, List, Union
-from enum import IntFlag
 import struct
+from dataclasses import dataclass
+from enum import IntFlag
+from typing import Optional, Union
 
 from dnp3py.core.config import ControlStatus
 
@@ -20,14 +20,14 @@ from dnp3py.core.config import ControlStatus
 class AnalogFlags(IntFlag):
     """Flags byte for analog objects."""
 
-    ONLINE = 0x01           # Point is online
-    RESTART = 0x02          # Point has been restarted
-    COMM_LOST = 0x04        # Communication lost
-    REMOTE_FORCED = 0x08    # Value forced by remote
-    LOCAL_FORCED = 0x10     # Value forced by local
-    OVER_RANGE = 0x20       # Value exceeds range
-    REFERENCE_ERR = 0x40    # Reference error
-    RESERVED = 0x80         # Reserved
+    ONLINE = 0x01  # Point is online
+    RESTART = 0x02  # Point has been restarted
+    COMM_LOST = 0x04  # Communication lost
+    REMOTE_FORCED = 0x08  # Value forced by remote
+    LOCAL_FORCED = 0x10  # Value forced by local
+    OVER_RANGE = 0x20  # Value exceeds range
+    REFERENCE_ERR = 0x40  # Reference error
+    RESERVED = 0x80  # Reserved
 
 
 @dataclass
@@ -134,32 +134,24 @@ class AnalogInput:
         if variation == 1:
             # 32-bit signed with flag
             if not -2147483648 <= int_val <= 2147483647:
-                raise ValueError(
-                    f"Value {int_val} out of range for 32-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 32-bit signed integer")
             result.append(self.flags)
             result.extend(struct.pack("<i", int_val))
         elif variation == 2:
             # 16-bit signed with flag
             if not -32768 <= int_val <= 32767:
-                raise ValueError(
-                    f"Value {int_val} out of range for 16-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 16-bit signed integer")
             result.append(self.flags)
             result.extend(struct.pack("<h", int_val))
         elif variation == 3:
             # 32-bit signed without flag
             if not -2147483648 <= int_val <= 2147483647:
-                raise ValueError(
-                    f"Value {int_val} out of range for 32-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 32-bit signed integer")
             result.extend(struct.pack("<i", int_val))
         elif variation == 4:
             # 16-bit signed without flag
             if not -32768 <= int_val <= 32767:
-                raise ValueError(
-                    f"Value {int_val} out of range for 16-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 16-bit signed integer")
             result.extend(struct.pack("<h", int_val))
         elif variation == 5:
             # 32-bit float with flag
@@ -243,16 +235,12 @@ class AnalogOutput:
 
         if variation == 1:
             if not -2147483648 <= int_val <= 2147483647:
-                raise ValueError(
-                    f"Value {int_val} out of range for 32-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 32-bit signed integer")
             result.append(self.flags)
             result.extend(struct.pack("<i", int_val))
         elif variation == 2:
             if not -32768 <= int_val <= 32767:
-                raise ValueError(
-                    f"Value {int_val} out of range for 16-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 16-bit signed integer")
             result.append(self.flags)
             result.extend(struct.pack("<h", int_val))
         elif variation == 3:
@@ -309,16 +297,12 @@ class AnalogOutputCommand:
 
         if variation == 1:
             if not -2147483648 <= int_val <= 2147483647:
-                raise ValueError(
-                    f"Value {int_val} out of range for 32-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 32-bit signed integer")
             result.extend(struct.pack("<i", int_val))
             result.append(self.status)
         elif variation == 2:
             if not -32768 <= int_val <= 32767:
-                raise ValueError(
-                    f"Value {int_val} out of range for 16-bit signed integer"
-                )
+                raise ValueError(f"Value {int_val} out of range for 16-bit signed integer")
             result.extend(struct.pack("<h", int_val))
             result.append(self.status)
         elif variation == 3:
@@ -381,7 +365,7 @@ def parse_analog_inputs(
     start_index: int,
     count: int,
     variation: int,
-) -> List[AnalogInput]:
+) -> list[AnalogInput]:
     """
     Parse multiple analog inputs from response data.
 
@@ -413,7 +397,9 @@ def parse_analog_inputs(
     for i in range(count):
         if offset + obj_size > len(data):
             break
-        inputs.append(AnalogInput.from_bytes(data[offset:offset + obj_size], start_index + i, variation))
+        inputs.append(
+            AnalogInput.from_bytes(data[offset : offset + obj_size], start_index + i, variation)
+        )
         offset += obj_size
 
     return inputs
@@ -424,7 +410,7 @@ def parse_analog_outputs(
     start_index: int,
     count: int,
     variation: int,
-) -> List[AnalogOutput]:
+) -> list[AnalogOutput]:
     """
     Parse multiple analog outputs from response data.
 
@@ -456,7 +442,9 @@ def parse_analog_outputs(
     for i in range(count):
         if offset + obj_size > len(data):
             break
-        outputs.append(AnalogOutput.from_bytes(data[offset:offset + obj_size], start_index + i, variation))
+        outputs.append(
+            AnalogOutput.from_bytes(data[offset : offset + obj_size], start_index + i, variation)
+        )
         offset += obj_size
 
     return outputs

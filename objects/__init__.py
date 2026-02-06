@@ -13,14 +13,14 @@ For parsing response data, use the submodules directly:
 - dnp3py.objects.counter: parse_counters
 """
 
-from dnp3py.objects.binary import BinaryInput, BinaryOutput, BinaryOutputCommand
 from dnp3py.objects.analog import AnalogInput, AnalogOutput, AnalogOutputCommand
+from dnp3py.objects.binary import BinaryInput, BinaryOutput, BinaryOutputCommand
 from dnp3py.objects.counter import Counter
 from dnp3py.objects.groups import (
     ObjectGroup,
     ObjectVariation,
-    get_object_size,
     get_group_name,
+    get_object_size,
 )
 
 __all__ = [
