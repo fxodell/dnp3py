@@ -60,9 +60,17 @@ class CRC16DNP3:
         Note:
             An empty input returns 0xFFFF (the final XOR value with no data).
             This is technically correct but may indicate a usage error.
+
+        Raises:
+            ValueError: If data is None.
+            TypeError: If data is not bytes or bytearray.
         """
         if data is None:
             raise ValueError("CRC input data cannot be None")
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError(
+                f"CRC input must be bytes or bytearray, got {type(data).__name__}"
+            )
 
         table = cls._init_table()
         crc = 0x0000
@@ -114,11 +122,18 @@ class CRC16DNP3:
             True if CRC matches, False otherwise
 
         Raises:
-            ValueError: If crc_bytes is not exactly 2 bytes
+            ValueError: If crc_bytes is None or not exactly 2 bytes.
+            TypeError: If crc_bytes is not bytes or bytearray.
         """
-        if crc_bytes is None or len(crc_bytes) != 2:
+        if crc_bytes is None:
+            raise ValueError("CRC bytes cannot be None")
+        if not isinstance(crc_bytes, (bytes, bytearray)):
+            raise TypeError(
+                f"CRC bytes must be bytes or bytearray, got {type(crc_bytes).__name__}"
+            )
+        if len(crc_bytes) != 2:
             raise ValueError(
-                f"CRC bytes must be exactly 2 bytes, got {len(crc_bytes) if crc_bytes else 'None'}"
+                f"CRC bytes must be exactly 2 bytes, got {len(crc_bytes)}"
             )
         expected = crc_bytes[0] | (crc_bytes[1] << 8)
         return cls.verify(data, expected)
@@ -137,7 +152,7 @@ class CRC16DNP3:
         return bytes(data) + cls.calculate_bytes(data)
 
 
-def calculate_frame_crc(frame_data: bytes) -> tuple[bytes, list[bytes]]:
+def calculate_frame_crc(frame_data: Union[bytes, bytearray]) -> tuple[bytes, list[bytes]]:
     """
     Calculate CRCs for a complete DNP3 frame.
 
@@ -146,11 +161,18 @@ def calculate_frame_crc(frame_data: bytes) -> tuple[bytes, list[bytes]]:
     - Block CRCs: CRC every 16 bytes of user data
 
     Args:
-        frame_data: Frame data without CRCs
+        frame_data: Frame data without CRCs (bytes or bytearray)
 
     Returns:
         Tuple of (header_crc_bytes, list_of_block_crc_bytes)
+
+    Raises:
+        TypeError: If frame_data is not bytes or bytearray.
     """
+    if not isinstance(frame_data, (bytes, bytearray)):
+        raise TypeError(
+            f"frame_data must be bytes or bytearray, got {type(frame_data).__name__}"
+        )
     header = frame_data[:8]
     header_crc = CRC16DNP3.calculate_bytes(header)
 

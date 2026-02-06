@@ -149,9 +149,19 @@ class IINFlags:
 
     @classmethod
     def from_bytes(cls, iin1: int, iin2: int) -> "IINFlags":
-        """Parse IIN bytes into flags. Values are masked to 0-255."""
-        iin1 = int(iin1) & 0xFF
-        iin2 = int(iin2) & 0xFF
+        """Parse IIN bytes into flags. Values are masked to 0-255.
+
+        Raises:
+            TypeError: If iin1 or iin2 is not coercible to int.
+        """
+        try:
+            iin1 = int(iin1) & 0xFF
+        except (TypeError, ValueError) as e:
+            raise TypeError(f"IIN1 must be an integer (0-255), got {type(iin1).__name__}") from e
+        try:
+            iin2 = int(iin2) & 0xFF
+        except (TypeError, ValueError) as e:
+            raise TypeError(f"IIN2 must be an integer (0-255), got {type(iin2).__name__}") from e
         return cls(
             broadcast=(iin1 & 0x01) != 0,
             class_1_events=(iin1 & 0x02) != 0,
@@ -303,13 +313,15 @@ class DNP3Config:
             )
         self.outstation_address = outstation_address
 
-        # Timeouts (seconds) must be positive
-        if self.response_timeout <= 0:
-            raise ValueError(f"Response timeout must be positive, got {self.response_timeout}")
-        if self.connection_timeout <= 0:
-            raise ValueError(f"Connection timeout must be positive, got {self.connection_timeout}")
-        if self.select_timeout <= 0:
-            raise ValueError(f"Select timeout must be positive, got {self.select_timeout}")
+        # Timeouts (seconds) must be positive; coerce to float
+        for name in ("response_timeout", "connection_timeout", "select_timeout"):
+            try:
+                val = float(getattr(self, name))
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"{name} must be a number, got {getattr(self, name)!r}") from e
+            if val <= 0:
+                raise ValueError(f"{name} must be positive, got {val}")
+            setattr(self, name, val)
 
         # Retries
         try:
@@ -320,19 +332,48 @@ class DNP3Config:
             raise ValueError(f"max_retries must be >= 0, got {max_retries}")
         self.max_retries = max_retries
 
-        if self.retry_delay < 0:
-            raise ValueError(f"retry_delay must be >= 0, got {self.retry_delay}")
+        try:
+            retry_delay = float(self.retry_delay)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"retry_delay must be a number, got {self.retry_delay!r}") from e
+        if retry_delay < 0:
+            raise ValueError(f"retry_delay must be >= 0, got {retry_delay}")
+        self.retry_delay = retry_delay
 
-        # Data link: max user data per frame (DNP3 limit 250)
-        if not 1 <= self.max_frame_size <= 250:
-            raise ValueError(f"max_frame_size must be 1-250, got {self.max_frame_size}")
+        # Data link: max user data per frame (DNP3 limit 250); coerce to int
+        try:
+            max_frame_size = int(self.max_frame_size)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"max_frame_size must be an integer, got {self.max_frame_size!r}") from e
+        if not 1 <= max_frame_size <= 250:
+            raise ValueError(f"max_frame_size must be 1-250, got {max_frame_size}")
+        self.max_frame_size = max_frame_size
 
-        # Application layer
-        if self.max_apdu_size < 1:
-            raise ValueError(f"max_apdu_size must be >= 1, got {self.max_apdu_size}")
+        # Application layer: max APDU size (align with transport MAX_MESSAGE_SIZE = 65536)
+        try:
+            max_apdu_size = int(self.max_apdu_size)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"max_apdu_size must be an integer, got {self.max_apdu_size!r}") from e
+        if not 1 <= max_apdu_size <= 65536:
+            raise ValueError(f"max_apdu_size must be 1-65536, got {max_apdu_size}")
+        self.max_apdu_size = max_apdu_size
 
-        # Poll intervals (0 = disabled)
+        # Poll intervals (0 = disabled); coerce to float
         for name in ("class_0_poll_interval", "class_1_poll_interval", "class_2_poll_interval", "class_3_poll_interval"):
-            val = getattr(self, name)
+            try:
+                val = float(getattr(self, name))
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"{name} must be a number, got {getattr(self, name)!r}") from e
             if val < 0:
                 raise ValueError(f"{name} must be >= 0, got {val}")
+            setattr(self, name, val)
+
+        # Log level: must be valid for logging (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        if not isinstance(self.log_level, str):
+            raise ValueError(f"log_level must be a string, got {type(self.log_level).__name__}")
+        normalized = self.log_level.strip().upper()
+        if normalized not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+            raise ValueError(
+                f"log_level must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL, got {self.log_level!r}"
+            )
+        self.log_level = normalized

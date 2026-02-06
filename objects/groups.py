@@ -7,6 +7,7 @@ Variations identify the specific format of the data.
 """
 
 from enum import IntEnum
+from typing import Optional
 
 
 class ObjectGroup(IntEnum):
@@ -200,10 +201,10 @@ OBJECT_SIZES = {
     # =========================================================================
     # Counter (Group 20) - Static data
     # =========================================================================
-    (20, 1): 5,     # 32-bit unsigned with flag: value(4) + flag(1)
-    (20, 2): 3,     # 16-bit unsigned with flag: value(2) + flag(1)
-    (20, 3): 5,     # 32-bit signed delta with flag: value(4) + flag(1)
-    (20, 4): 3,     # 16-bit signed delta with flag: value(2) + flag(1)
+    (20, 1): 5,     # 32-bit unsigned with flag: flag(1) + value(4)
+    (20, 2): 3,     # 16-bit unsigned with flag: flag(1) + value(2)
+    (20, 3): 5,     # 32-bit signed delta with flag: flag(1) + value(4)
+    (20, 4): 3,     # 16-bit signed delta with flag: flag(1) + value(2)
     (20, 5): 4,     # 32-bit unsigned without flag
     (20, 6): 2,     # 16-bit unsigned without flag
     (20, 7): 4,     # 32-bit signed delta without flag
@@ -375,7 +376,7 @@ OBJECT_SIZES = {
 }
 
 
-def get_object_size(group: int, variation: int) -> int | None:
+def get_object_size(group: int, variation: int) -> Optional[int]:
     """
     Get the size of an object in bytes.
 
@@ -384,13 +385,13 @@ def get_object_size(group: int, variation: int) -> int | None:
         variation: Object variation
 
     Returns:
-        Size in bytes, or None if variable/packed
+        Size in bytes, or None if variable/packed or unknown (group, variation)
     """
     return OBJECT_SIZES.get((group, variation))
 
 
 def get_group_name(group: int) -> str:
-    """Get human-readable name for a group number."""
+    """Get human-readable name for a group number. Unknown groups return 'Group N'."""
     names = {
         1: "Binary Input",
         2: "Binary Input Event",
@@ -399,18 +400,31 @@ def get_group_name(group: int) -> str:
         10: "Binary Output",
         11: "Binary Output Event",
         12: "Control Relay Output Block",
+        13: "Binary Output Command Event",
         20: "Counter",
         21: "Frozen Counter",
         22: "Counter Event",
+        23: "Frozen Counter Event",
         30: "Analog Input",
         31: "Frozen Analog Input",
         32: "Analog Input Event",
+        33: "Frozen Analog Input Event",
+        34: "Analog Input Deadband",
         40: "Analog Output Status",
         41: "Analog Output Block",
         42: "Analog Output Event",
+        43: "Analog Output Command Event",
         50: "Time and Date",
+        51: "Time and Date CTO",
+        52: "Time Delay",
         60: "Class Objects",
+        70: "File Identifier",
+        71: "File Authentication",
         80: "Internal Indications",
         110: "Octet String",
+        111: "Octet String Event",
+        112: "Virtual Terminal Output",
+        113: "Virtual Terminal Event",
+        120: "Authentication",
     }
-    return names.get(group, f"Group {group}")
+    return names.get(int(group), f"Group {group}")

@@ -2,10 +2,31 @@
 
 All DNP3 exceptions inherit from DNP3Error. Catch DNP3Error to handle any
 driver or protocol error. Use specific subclasses for finer-grained handling
-or to access context (host, port, timeout_seconds, etc.).
+or to access optional context attributes.
+
+Exception hierarchy and optional context:
+- DNP3Error: base (no context)
+- DNP3CommunicationError: host, port
+- DNP3TimeoutError: timeout_seconds
+- DNP3ProtocolError: function_code, iin
+- DNP3CRCError: expected_crc, actual_crc
+- DNP3FrameError: (no context)
+- DNP3ObjectError: group, variation
+- DNP3ControlError: status_code (control/CROB/AOB failures)
 """
 
 from typing import Optional
+
+__all__ = [
+    "DNP3Error",
+    "DNP3CommunicationError",
+    "DNP3TimeoutError",
+    "DNP3ProtocolError",
+    "DNP3CRCError",
+    "DNP3FrameError",
+    "DNP3ObjectError",
+    "DNP3ControlError",
+]
 
 
 class DNP3Error(Exception):

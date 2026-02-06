@@ -5,13 +5,13 @@ Basic DNP3 driver usage examples.
 This script demonstrates how to use the DNP3 driver to communicate
 with a DNP3 outstation over TCP/IP.
 
-Run from the project root with pydnp3 installed: pip install -e .
+Run from the project root with dnp3py installed: pip install -e .
 """
 
 import time
 
-from pydnp3 import DNP3Master, DNP3Config
-from pydnp3.utils.logging import setup_logging
+from dnp3py import DNP3Master, DNP3Config
+from dnp3py.utils.logging import setup_logging
 
 
 def basic_read_example():

@@ -2,7 +2,9 @@
 DNP3 Master Station implementation.
 
 The Master class provides high-level DNP3 communication capabilities
-over TCP/IP, coordinating all protocol layers.
+over TCP/IP, coordinating all protocol layers (Data Link, Transport, Application).
+It is thread-safe: open/close and request/response use a single lock.
+Use the connect() context manager or open()/close() for connection life cycle.
 """
 
 import socket
@@ -12,14 +14,14 @@ from typing import Optional, List, Callable, Union
 from dataclasses import dataclass, field
 from contextlib import contextmanager
 
-from pydnp3.core.config import (
+from dnp3py.core.config import (
     DNP3Config,
     AppLayerFunction,
     QualifierCode,
     IINFlags,
     ControlStatus,
 )
-from pydnp3.core.exceptions import (
+from dnp3py.core.exceptions import (
     DNP3Error,
     DNP3CommunicationError,
     DNP3TimeoutError,
@@ -28,30 +30,30 @@ from pydnp3.core.exceptions import (
     DNP3FrameError,
     DNP3ControlError,
 )
-from pydnp3.layers.datalink import DataLinkLayer, DataLinkFrame
-from pydnp3.layers.transport import TransportLayer
-from pydnp3.layers.application import (
+from dnp3py.layers.datalink import DataLinkLayer, DataLinkFrame
+from dnp3py.layers.transport import TransportLayer
+from dnp3py.layers.application import (
     ApplicationLayer,
     ApplicationResponse,
     ObjectHeader,
 )
-from pydnp3.objects.binary import (
+from dnp3py.objects.binary import (
     BinaryInput,
     BinaryOutput,
     BinaryOutputCommand,
     parse_binary_inputs,
     parse_binary_outputs,
 )
-from pydnp3.objects.analog import (
+from dnp3py.objects.analog import (
     AnalogInput,
     AnalogOutput,
     AnalogOutputCommand,
     parse_analog_inputs,
     parse_analog_outputs,
 )
-from pydnp3.objects.counter import Counter, parse_counters
-from pydnp3.objects.groups import ObjectGroup, ObjectVariation, get_object_size
-from pydnp3.utils.logging import get_logger, log_frame
+from dnp3py.objects.counter import Counter, parse_counters
+from dnp3py.objects.groups import ObjectGroup, ObjectVariation, get_object_size
+from dnp3py.utils.logging import get_logger, log_frame
 
 
 @dataclass
@@ -213,14 +215,22 @@ class DNP3Master:
             DNP3CommunicationError: If send fails
         """
         if not self._socket:
-            raise DNP3CommunicationError("Not connected")
+            raise DNP3CommunicationError(
+                "Not connected",
+                host=self.config.host,
+                port=self.config.port,
+            )
 
         try:
             if self.config.log_raw_frames:
                 log_frame(frame, "TX", self._logger)
             self._socket.sendall(frame)
         except socket.error as e:
-            raise DNP3CommunicationError(f"Send failed: {e}")
+            raise DNP3CommunicationError(
+                f"Send failed: {e}",
+                host=self.config.host,
+                port=self.config.port,
+            ) from e
 
     def _receive_frame(self, timeout: Optional[float] = None) -> DataLinkFrame:
         """
@@ -238,7 +248,11 @@ class DNP3Master:
             DNP3CommunicationError: If receive fails
         """
         if not self._socket:
-            raise DNP3CommunicationError("Not connected")
+            raise DNP3CommunicationError(
+                "Not connected",
+                host=self.config.host,
+                port=self.config.port,
+            )
 
         timeout = timeout or self.config.response_timeout
         self._socket.settimeout(timeout)
@@ -291,12 +305,20 @@ class DNP3Master:
                 self._socket.settimeout(remaining_timeout)
                 data = self._socket.recv(1024)
                 if not data:
-                    raise DNP3CommunicationError("Connection closed by remote")
+                    raise DNP3CommunicationError(
+                        "Connection closed by remote",
+                        host=self.config.host,
+                        port=self.config.port,
+                    )
                 self._rx_buffer.extend(data)
             except socket.timeout:
                 raise DNP3TimeoutError("Response timeout", timeout_seconds=timeout)
             except socket.error as e:
-                raise DNP3CommunicationError(f"Receive failed: {e}")
+                raise DNP3CommunicationError(
+                    f"Receive failed: {e}",
+                    host=self.config.host,
+                    port=self.config.port,
+                ) from e
 
     def _send_request(
         self,

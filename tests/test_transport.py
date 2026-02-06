@@ -1,14 +1,15 @@
 """Tests for DNP3 Transport Layer."""
 
 import pytest
-from pydnp3.layers.transport import (
+from dnp3py.layers.transport import (
     TransportLayer,
     TransportSegment,
     MAX_SEGMENT_PAYLOAD,
+    MAX_MESSAGE_SIZE,
     FIR_FLAG,
     FIN_FLAG,
 )
-from pydnp3.core.exceptions import DNP3FrameError
+from dnp3py.core.exceptions import DNP3FrameError
 
 
 class TestTransportSegment:
@@ -70,6 +71,13 @@ class TestTransportSegment:
         """Test parsing empty data raises error."""
         with pytest.raises(DNP3FrameError):
             TransportSegment.from_bytes(b"")
+
+    def test_from_bytes_too_long(self):
+        """Test parsing segment exceeding max payload raises error."""
+        # 1 header + 250 payload = 251 bytes (max is 250)
+        data = bytes([0xC0]) + bytes(250)
+        with pytest.raises(DNP3FrameError, match="too long"):
+            TransportSegment.from_bytes(data)
 
 
 class TestTransportLayer:
@@ -252,6 +260,26 @@ class TestTransportLayer:
         assert info["is_first"] is True
         assert info["is_final"] is True
 
+    def test_segment_apdu_exceeds_max_message_size(self):
+        """Test segmenting APDU larger than MAX_MESSAGE_SIZE raises error."""
+        apdu = bytes(MAX_MESSAGE_SIZE + 1)
+        with pytest.raises(DNP3FrameError, match="exceeds maximum message size"):
+            self.layer.segment(apdu)
+
+    def test_segment_invalid_max_payload(self):
+        """Test segment with invalid max_payload raises error."""
+        with pytest.raises(DNP3FrameError, match="max_payload"):
+            self.layer.segment(bytes(10), max_payload=0)
+        with pytest.raises(DNP3FrameError, match="max_payload"):
+            self.layer.segment(bytes(10), max_payload=MAX_SEGMENT_PAYLOAD + 1)
+
+    def test_parse_header_invalid(self):
+        """Test parse_header with invalid input raises error."""
+        with pytest.raises(DNP3FrameError, match="0-255"):
+            TransportLayer.parse_header(256)
+        with pytest.raises(DNP3FrameError, match="0-255"):
+            TransportLayer.parse_header(-1)
+
     def test_is_receiving_property(self):
         """Test is_receiving property."""
         assert self.layer.is_receiving is False
@@ -264,7 +292,7 @@ class TestTransportLayer:
 
     def test_reassemble_message_size_limit(self):
         """Test message size limit protection during reassembly."""
-        from pydnp3.layers.transport import MAX_MESSAGE_SIZE
+        from dnp3py.layers.transport import MAX_MESSAGE_SIZE
 
         # Start with first segment
         first_segment = TransportSegment(

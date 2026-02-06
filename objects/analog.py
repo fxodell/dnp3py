@@ -14,7 +14,7 @@ from typing import Optional, List, Union
 from enum import IntFlag
 import struct
 
-from pydnp3.core.config import ControlStatus
+from dnp3py.core.config import ControlStatus
 
 
 class AnalogFlags(IntFlag):
@@ -72,13 +72,18 @@ class AnalogInput:
             Parsed AnalogInput
 
         Raises:
-            ValueError: If data is too short or variation is unsupported.
+            ValueError: If data is too short, variation is unsupported, or index is negative.
+            TypeError: If data is not bytes or bytearray.
         """
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError(f"data must be bytes or bytearray, got {type(data).__name__}")
+        if not isinstance(index, int) or index < 0:
+            raise ValueError(f"index must be a non-negative integer, got {index!r}")
+        if not isinstance(variation, int) or variation not in (1, 2, 3, 4, 5, 6):
+            raise ValueError(f"variation must be an integer 1-6, got {variation!r}")
         # Required sizes: 1->5, 2->3, 3->4, 4->2, 5->5, 6->9
         sizes = {1: 5, 2: 3, 3: 4, 4: 2, 5: 5, 6: 9}
-        required = sizes.get(variation)
-        if required is None:
-            raise ValueError(f"Unsupported variation: {variation}")
+        required = sizes[variation]
         if len(data) < required:
             raise ValueError(
                 f"Insufficient data for analog input variation {variation}: "
@@ -117,8 +122,10 @@ class AnalogInput:
             Serialized bytes
 
         Raises:
-            ValueError: If value is out of range for the specified variation
+            ValueError: If value is out of range for the specified variation or variation is unsupported.
         """
+        if not isinstance(variation, int) or variation not in (1, 2, 3, 4, 5, 6):
+            raise ValueError(f"variation must be an integer 1-6, got {variation!r}")
         result = bytearray()
 
         # Get integer value with range checking
@@ -162,8 +169,7 @@ class AnalogInput:
             # 64-bit double with flag
             result.append(self.flags)
             result.extend(struct.pack("<d", float(self.value)))
-        else:
-            raise ValueError(f"Unsupported analog input variation: {variation}")
+        # variation already validated at start
 
         return bytes(result)
 
@@ -189,12 +195,17 @@ class AnalogOutput:
         """Parse analog output from bytes.
 
         Raises:
-            ValueError: If data is too short or variation is unsupported.
+            ValueError: If data is too short, variation is unsupported, or index is negative.
+            TypeError: If data is not bytes or bytearray.
         """
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError(f"data must be bytes or bytearray, got {type(data).__name__}")
+        if not isinstance(index, int) or index < 0:
+            raise ValueError(f"index must be a non-negative integer, got {index!r}")
+        if not isinstance(variation, int) or variation not in (1, 2, 3, 4):
+            raise ValueError(f"variation must be an integer 1-4, got {variation!r}")
         sizes = {1: 5, 2: 3, 3: 5, 4: 9}
-        required = sizes.get(variation)
-        if required is None:
-            raise ValueError(f"Unsupported variation: {variation}")
+        required = sizes[variation]
         if len(data) < required:
             raise ValueError(
                 f"Insufficient data for analog output variation {variation}: "
@@ -225,6 +236,8 @@ class AnalogOutput:
         Raises:
             ValueError: If value is out of range for integer variations or variation is unsupported.
         """
+        if not isinstance(variation, int) or variation not in (1, 2, 3, 4):
+            raise ValueError(f"variation must be an integer 1-4, got {variation!r}")
         result = bytearray()
         int_val = int(self.value)
 
@@ -248,8 +261,7 @@ class AnalogOutput:
         elif variation == 4:
             result.append(self.flags)
             result.extend(struct.pack("<d", float(self.value)))
-        else:
-            raise ValueError(f"Unsupported variation: {variation}")
+        # variation already validated at start
 
         return bytes(result)
 
@@ -271,7 +283,13 @@ class AnalogOutputCommand:
 
     @classmethod
     def create(cls, index: int, value: Union[int, float]) -> "AnalogOutputCommand":
-        """Create an analog output command."""
+        """Create an analog output command.
+
+        Raises:
+            ValueError: If index is negative.
+        """
+        if not isinstance(index, int) or index < 0:
+            raise ValueError(f"index must be a non-negative integer, got {index!r}")
         return cls(index=index, value=value)
 
     def to_bytes(self, variation: int = 1) -> bytes:
@@ -284,6 +302,8 @@ class AnalogOutputCommand:
         Raises:
             ValueError: If value is out of range for integer variations or variation is unsupported.
         """
+        if not isinstance(variation, int) or variation not in (1, 2, 3, 4):
+            raise ValueError(f"variation must be an integer 1-4, got {variation!r}")
         result = bytearray()
         int_val = int(self.value)
 
@@ -307,14 +327,24 @@ class AnalogOutputCommand:
         elif variation == 4:
             result.extend(struct.pack("<d", float(self.value)))
             result.append(self.status)
-        else:
-            raise ValueError(f"Unsupported variation: {variation}")
+        # variation already validated at start
 
         return bytes(result)
 
     @classmethod
     def from_bytes(cls, data: bytes, index: int, variation: int = 1) -> "AnalogOutputCommand":
-        """Parse analog output command from bytes."""
+        """Parse analog output command from bytes.
+
+        Raises:
+            ValueError: If data is too short, variation is unsupported, or index is negative.
+            TypeError: If data is not bytes or bytearray.
+        """
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError(f"data must be bytes or bytearray, got {type(data).__name__}")
+        if not isinstance(index, int) or index < 0:
+            raise ValueError(f"index must be a non-negative integer, got {index!r}")
+        if not isinstance(variation, int) or variation not in (1, 2, 3, 4):
+            raise ValueError(f"variation must be an integer 1-4, got {variation!r}")
         value: Union[int, float] = 0
         status = ControlStatus.SUCCESS
 
@@ -338,8 +368,7 @@ class AnalogOutputCommand:
                 raise ValueError(f"Analog output command data too short: {len(data)} < 9")
             value = struct.unpack("<d", data[:8])[0]
             status = data[8]
-        else:
-            raise ValueError(f"Unsupported variation: {variation}")
+        # variation already validated at start
 
         return cls(index=index, value=value, status=status)
 
@@ -368,15 +397,15 @@ def parse_analog_inputs(
     Raises:
         ValueError: If variation is unsupported or count/start_index is negative.
     """
-    if count < 0:
-        raise ValueError(f"count must be >= 0, got {count}")
-    if start_index < 0:
-        raise ValueError(f"start_index must be >= 0, got {start_index}")
+    if not isinstance(count, int) or count < 0:
+        raise ValueError(f"count must be a non-negative integer, got {count!r}")
+    if not isinstance(start_index, int) or start_index < 0:
+        raise ValueError(f"start_index must be a non-negative integer, got {start_index!r}")
+    if not isinstance(variation, int) or variation not in (1, 2, 3, 4, 5, 6):
+        raise ValueError(f"variation must be an integer 1-6, got {variation!r}")
 
     sizes = {1: 5, 2: 3, 3: 4, 4: 2, 5: 5, 6: 9}
-    obj_size = sizes.get(variation)
-    if obj_size is None:
-        raise ValueError(f"Unsupported analog input variation: {variation}")
+    obj_size = sizes[variation]
 
     inputs = []
     offset = 0
@@ -411,15 +440,15 @@ def parse_analog_outputs(
     Raises:
         ValueError: If variation is unsupported or count/start_index is negative.
     """
-    if count < 0:
-        raise ValueError(f"count must be >= 0, got {count}")
-    if start_index < 0:
-        raise ValueError(f"start_index must be >= 0, got {start_index}")
+    if not isinstance(count, int) or count < 0:
+        raise ValueError(f"count must be a non-negative integer, got {count!r}")
+    if not isinstance(start_index, int) or start_index < 0:
+        raise ValueError(f"start_index must be a non-negative integer, got {start_index!r}")
+    if not isinstance(variation, int) or variation not in (1, 2, 3, 4):
+        raise ValueError(f"variation must be an integer 1-4, got {variation!r}")
 
     sizes = {1: 5, 2: 3, 3: 5, 4: 9}
-    obj_size = sizes.get(variation)
-    if obj_size is None:
-        raise ValueError(f"Unsupported analog output variation: {variation}")
+    obj_size = sizes[variation]
 
     outputs = []
     offset = 0

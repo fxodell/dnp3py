@@ -1,7 +1,7 @@
 """Tests for DNP3 Application Layer."""
 
 import pytest
-from pydnp3.layers.application import (
+from dnp3py.layers.application import (
     ApplicationLayer,
     ApplicationRequest,
     ApplicationResponse,
@@ -9,8 +9,8 @@ from pydnp3.layers.application import (
     FIR_FLAG,
     FIN_FLAG,
 )
-from pydnp3.core.config import AppLayerFunction, QualifierCode, IINFlags
-from pydnp3.core.exceptions import DNP3ProtocolError, DNP3ObjectError
+from dnp3py.core.config import AppLayerFunction, QualifierCode, IINFlags
+from dnp3py.core.exceptions import DNP3ProtocolError, DNP3ObjectError
 
 
 class TestObjectHeader:
@@ -102,6 +102,21 @@ class TestObjectHeader:
         with pytest.raises(DNP3ObjectError):
             header.to_bytes()
 
+    def test_to_bytes_invalid_group_variation_qualifier(self):
+        """Test serialization with out-of-range group/variation/qualifier raises error."""
+        with pytest.raises(DNP3ObjectError, match="group"):
+            ObjectHeader(group=256, variation=1, qualifier=QualifierCode.ALL_OBJECTS).to_bytes()
+        with pytest.raises(DNP3ObjectError, match="variation"):
+            ObjectHeader(group=1, variation=256, qualifier=QualifierCode.ALL_OBJECTS).to_bytes()
+
+    def test_to_bytes_uint8_count_out_of_range(self):
+        """Test UINT8 count out of range raises error."""
+        header = ObjectHeader(
+            group=1, variation=2, qualifier=QualifierCode.UINT8_COUNT, count=256
+        )
+        with pytest.raises(DNP3ObjectError, match="UINT8 count"):
+            header.to_bytes()
+
     def test_from_bytes_with_offset(self):
         """Test parsing header at offset."""
         data = bytes([0xFF, 0xFF, 60, 1, QualifierCode.ALL_OBJECTS])
@@ -109,6 +124,14 @@ class TestObjectHeader:
 
         assert header.group == 60
         assert consumed == 3
+
+    def test_from_bytes_invalid_offset(self):
+        """Test parsing with invalid offset raises error."""
+        data = bytes([60, 1, QualifierCode.ALL_OBJECTS])
+        with pytest.raises(DNP3ObjectError, match="offset"):
+            ObjectHeader.from_bytes(data, offset=-1)
+        with pytest.raises(DNP3ObjectError, match="beyond data length"):
+            ObjectHeader.from_bytes(data, offset=10)
 
 
 class TestApplicationRequest:
@@ -284,6 +307,13 @@ class TestApplicationLayer:
 
         assert confirm[0] & 0x10  # UNS flag
 
+    def test_build_confirm_invalid_sequence(self):
+        """Test build_confirm with invalid sequence raises error."""
+        with pytest.raises(ValueError, match="0-15"):
+            self.layer.build_confirm(sequence=16)
+        with pytest.raises(ValueError, match="0-15"):
+            self.layer.build_confirm(sequence=-1)
+
     def test_build_integrity_poll(self):
         """Test building integrity poll."""
         apdu = self.layer.build_integrity_poll()
@@ -310,6 +340,17 @@ class TestApplicationLayer:
         apdu = self.layer.build_read_request(group=30, variation=1, start=0, stop=10)
 
         assert apdu[1] == AppLayerFunction.READ
+
+    def test_build_read_request_invalid_args(self):
+        """Test build_read_request with invalid args raises error."""
+        with pytest.raises(ValueError, match="Group"):
+            self.layer.build_read_request(group=256, variation=0)
+        with pytest.raises(ValueError, match="Start"):
+            self.layer.build_read_request(group=1, variation=0, start=-1, stop=5)
+        with pytest.raises(ValueError, match="Stop"):
+            self.layer.build_read_request(group=1, variation=0, start=0, stop=-1)
+        with pytest.raises(ValueError, match="Start must be <= stop"):
+            self.layer.build_read_request(group=1, variation=0, start=10, stop=5)
 
     def test_parse_response(self):
         """Test parsing response."""

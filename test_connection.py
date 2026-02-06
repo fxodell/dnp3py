@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Quick test of pydnp3 with specified connection parameters."""
+"""Quick test of dnp3py with specified connection parameters."""
 
-from pydnp3 import DNP3Master, DNP3Config
-from pydnp3.utils.logging import setup_logging
+from dnp3py import DNP3Master, DNP3Config
+from dnp3py.utils.logging import setup_logging
 
 def main():
     setup_logging(level="INFO")

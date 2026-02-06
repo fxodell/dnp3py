@@ -13,8 +13,7 @@ from typing import Optional, List
 from enum import IntFlag
 import struct
 
-from pydnp3.core.config import ControlCode, ControlStatus
-from pydnp3.objects.groups import ObjectGroup, ObjectVariation
+from dnp3py.core.config import ControlCode, ControlStatus
 
 
 class BinaryFlags(IntFlag):
@@ -351,11 +350,20 @@ class BinaryOutputCommand:
 
     @classmethod
     def from_bytes(cls, data: bytes, index: int) -> "BinaryOutputCommand":
-        """Parse CROB from bytes."""
+        """Parse CROB from bytes.
+
+        Raises:
+            ValueError: If data is too short or parsed count/status are out of range.
+        """
         if len(data) < 11:
             raise ValueError(f"CROB data too short: {len(data)} < 11")
 
         control_code, count, on_time, off_time, status = struct.unpack("<BBIIB", data[:11])
+
+        if not 0 <= count <= 255:
+            raise ValueError(f"CROB count must be 0-255, got {count}")
+        if not 0 <= status <= 255:
+            raise ValueError(f"CROB status must be 0-255, got {status}")
 
         return cls(
             index=index,

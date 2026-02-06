@@ -22,8 +22,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 from enum import IntFlag
 
-from pydnp3.utils.crc import CRC16DNP3
-from pydnp3.core.exceptions import DNP3CRCError, DNP3FrameError
+from dnp3py.utils.crc import CRC16DNP3
+from dnp3py.core.exceptions import DNP3CRCError, DNP3FrameError
 
 
 # DNP3 Frame constants
@@ -248,16 +248,20 @@ class DataLinkLayer:
         Build a Request Link Status frame.
 
         Args:
-            destination: Destination address
-            source: Source address
+            destination: Destination address (defaults to outstation)
+            source: Source address (defaults to master)
 
         Returns:
             Frame bytes
         """
         if destination is None:
             destination = self.outstation_address
+        else:
+            self._validate_address(destination, "Destination")
         if source is None:
             source = self.master_address
+        else:
+            self._validate_address(source, "Source")
 
         control = ControlByte.DIR | ControlByte.PRM | PrimaryFunction.REQUEST_LINK_STATUS
         length = 5  # Control + addresses, no user data
@@ -282,16 +286,20 @@ class DataLinkLayer:
         Build a Reset Link frame.
 
         Args:
-            destination: Destination address
-            source: Source address
+            destination: Destination address (defaults to outstation)
+            source: Source address (defaults to master)
 
         Returns:
             Frame bytes
         """
         if destination is None:
             destination = self.outstation_address
+        else:
+            self._validate_address(destination, "Destination")
         if source is None:
             source = self.master_address
+        else:
+            self._validate_address(source, "Source")
 
         control = ControlByte.DIR | ControlByte.PRM | PrimaryFunction.RESET_LINK
         length = 5
@@ -429,6 +437,12 @@ class DataLinkLayer:
         Raises:
             DNP3FrameError: If length byte is invalid
         """
+        try:
+            length_byte = int(length_byte)
+        except (TypeError, ValueError) as e:
+            raise DNP3FrameError(
+                f"Length byte must be an integer (0-255), got {type(length_byte).__name__}"
+            ) from e
         # DNP3 length must be at least 5 (control + addresses)
         # and at most 255 (5 + 250 max user data)
         if length_byte < 5:

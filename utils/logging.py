@@ -9,6 +9,10 @@ from typing import Optional
 _logger: Optional[logging.Logger] = None
 
 
+# Valid logging level names (case-insensitive)
+_VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
+
 def setup_logging(
     level: str = "INFO",
     log_file: Optional[str] = None,
@@ -24,15 +28,24 @@ def setup_logging(
 
     Returns:
         Configured logger instance
+
+    Raises:
+        ValueError: If level is not a valid logging level name.
     """
     global _logger
+
+    if not isinstance(level, str) or level.upper() not in _VALID_LEVELS:
+        raise ValueError(
+            f"level must be one of {sorted(_VALID_LEVELS)}, got {level!r}"
+        )
 
     if log_format is None:
         log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     # Create logger
-    logger = logging.getLogger("pydnp3")
+    logger = logging.getLogger("dnp3py")
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+    logger.propagate = False
 
     # Clear existing handlers
     logger.handlers = []
@@ -44,7 +57,7 @@ def setup_logging(
 
     # File handler if specified
     if log_file:
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setFormatter(logging.Formatter(log_format))
         logger.addHandler(file_handler)
 
@@ -73,7 +86,14 @@ def log_frame(frame: bytes, direction: str = "TX", logger: Optional[logging.Logg
         frame: Frame bytes to log
         direction: "TX" for transmitted, "RX" for received
         logger: Optional logger instance (uses default if not provided)
+
+    Raises:
+        TypeError: If frame is not bytes or bytearray.
     """
+    if not isinstance(frame, (bytes, bytearray)):
+        raise TypeError(
+            f"frame must be bytes or bytearray, got {type(frame).__name__}"
+        )
     if logger is None:
         logger = get_logger()
 
@@ -93,7 +113,14 @@ def log_parsed_frame(
         frame_info: Dictionary with parsed frame details
         direction: "TX" for transmitted, "RX" for received
         logger: Optional logger instance
+
+    Raises:
+        TypeError: If frame_info is not a dict.
     """
+    if not isinstance(frame_info, dict):
+        raise TypeError(
+            f"frame_info must be a dict, got {type(frame_info).__name__}"
+        )
     if logger is None:
         logger = get_logger()
 

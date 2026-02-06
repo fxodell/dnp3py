@@ -1,4 +1,4 @@
-# pydnp3
+# dnp3py
 
 A pure Python implementation of the DNP3 (Distributed Network Protocol 3) protocol for SCADA communications over TCP/IP.
 
@@ -32,19 +32,19 @@ This driver implements the DNP3 protocol stack to communicate with DNP3 outstati
 
 ```bash
 # Clone the repository
-git clone https://github.com/fxodell/pydnp3.git
-cd pydnp3
+git clone https://github.com/fxodell/dnp3py.git
+cd dnp3py
 
 # Install in development mode (recommended)
 pip install -e .
 ```
 
-After installation, `pydnp3` is available from any directory.
+After installation, `dnp3py` is available from any directory.
 
 ## Quick Start
 
 ```python
-from pydnp3 import DNP3Master, DNP3Config
+from dnp3py import DNP3Master, DNP3Config
 
 # Configure connection
 config = DNP3Config(
@@ -79,7 +79,7 @@ with master.connect():
     master.direct_operate_analog(0, value=50.0)
 ```
 
-**Run the interactive examples** (requires pydnp3 installed):
+**Run the interactive examples** (requires dnp3py installed):
 
 ```bash
 python examples/basic_usage.py
@@ -88,12 +88,12 @@ python examples/basic_usage.py
 ## Architecture
 
 ```
-pydnp3/
+dnp3py/
 ├── __init__.py           # Package exports
 ├── setup.py              # Package setup (pip install -e .)
 ├── test_connection.py    # Quick connection test (edit host/port/address)
 ├── core/
-│   ├── master.py         # DNP3Master class (main interface)
+│   ├── master.py         # DNP3Master (main interface; thread-safe, connect() context manager)
 │   ├── config.py         # Configuration and protocol constants
 │   └── exceptions.py     # Custom exceptions
 ├── layers/
@@ -211,7 +211,7 @@ master.pulse_binary(
 All DNP3 exceptions inherit from `DNP3Error`. Catch it for any driver error, or use specific types for context (e.g. `host`/`port` on `DNP3CommunicationError`, `timeout_seconds` on `DNP3TimeoutError`).
 
 ```python
-from pydnp3 import (
+from dnp3py import (
     DNP3Error,
     DNP3CommunicationError,
     DNP3TimeoutError,
@@ -232,11 +232,11 @@ except DNP3Error as e:
     print(f"DNP3 error: {e}")
 ```
 
-For frame, object, or control-specific errors, use `from pydnp3.core import DNP3FrameError, DNP3ObjectError, DNP3ControlError`.
+For frame, object, or control-specific errors, use `from dnp3py.core import DNP3FrameError, DNP3ObjectError, DNP3ControlError`.
 
 ## Running Tests
 
-From the project root (with pydnp3 installed):
+From the project root (with dnp3py installed):
 
 ```bash
 pytest tests/ -v
@@ -256,10 +256,18 @@ python test_connection.py
 
 ## Development
 
-- **Package layout**: Install with `pip install -e .` from the repo root; `pydnp3` is the top-level package.
-- **Validation**: `DNP3Config.validate()` normalizes and validates host, port, addresses, timeouts, and limits; called automatically when creating a `DNP3Master`.
-- **Objects**: Binary and analog object parsing/serialization validate input length and value ranges and raise clear `ValueError`s.
-- **Exceptions**: All DNP3 exceptions inherit from `DNP3Error`; optional attributes (e.g. `host`, `port`, `timeout_seconds`) use `Optional` typing.
+- **Setup**: `setup.py` uses `package_dir={"dnp3py": "."}` (repo root is the package); `find_packages()` excludes `tests` so the test suite is not installed. Version is read from `__init__.py` as the single source of truth. Long description is taken from `README.md`. Install dev dependencies with `pip install -e ".[dev]"` for pytest and pytest-cov.
+- **Git**: `.gitignore` excludes bytecode (`__pycache__/`, `*.pyc`), build artifacts (`build/`, `dist/`, `*.egg-info/`), virtual envs (`.venv/`, `venv/`), IDE/editor dirs (`.idea/`, `.vscode/`), test/cache (`.pytest_cache/`, `.coverage`, `htmlcov/`), tool caches (`.mypy_cache/`, `.ruff_cache/`), `*.log`, and `.claude/settings.local.json`; OS cruft (`.DS_Store`) is ignored. After `pip install -e .`, the `dnp3py.egg-info/` directory appears in the repo root; it is generated metadata and is correctly ignored—do not commit it.
+- **Package layout**: Install with `pip install -e .` from the repo root; `dnp3py` is the top-level package. The root `__init__.py` exports `DNP3Master`, `DNP3Config`, the exception classes (`DNP3Error`, `DNP3CommunicationError`, `DNP3TimeoutError`, `DNP3ProtocolError`, `DNP3CRCError`), and `__version__` via `__all__`. Subpackages use relative or absolute imports; each `__init__.py` exposes a public API via `__all__`.
+- **Core package**: `core/__init__.py` re-exports `DNP3Master`, `DNP3Config`, `PollResult` (return type of `integrity_poll()` and `read_class()`), and all eight DNP3 exception classes. The top-level `dnp3py` package exports only the five most common exceptions; use `from dnp3py.core import PollResult, DNP3FrameError`, etc., when needed.
+- **Master**: `core/master.py` implements `DNP3Master`; it coordinates Data Link, Transport, and Application layers and is thread-safe (open/close and request/response use a single lock). Use the `connect()` context manager or `open()`/`close()` for connection life cycle. `DNP3CommunicationError` is raised with `host` and `port` set from config when send/receive or connection fails, for easier debugging.
+- **Config**: `core/config.py` defines `DNP3Config` and protocol enums (LinkLayerFunction, AppLayerFunction, QualifierCode, ControlCode, ControlStatus, IINFlags). `DNP3Config.validate()` normalizes and validates all fields: host (non-empty string), port (1-65535), master/outstation addresses (0-65519), timeouts and retry_delay (coerced to float, positive or ≥0), max_frame_size (1-250), max_apdu_size (1-65536), poll intervals (≥0), and log_level (DEBUG/INFO/WARNING/ERROR/CRITICAL). `IINFlags.from_bytes(iin1, iin2)` validates that iin1/iin2 are coercible to int. Called automatically when creating a `DNP3Master`.
+- **Objects**: Binary, analog, and counter modules validate input length and value ranges in `from_bytes`/`to_bytes` and in `parse_*` (e.g. `count`/`start_index` ≥ 0); invalid data raises clear `ValueError`s or `TypeError`. Analog (`objects/analog.py`) additionally validates `data` type (bytes/bytearray), `index` ≥ 0, and `variation` in valid range (1–6 for AnalogInput, 1–4 for AnalogOutput/AnalogOutputCommand) in `from_bytes`/`to_bytes`/`create()` and `parse_analog_inputs`/`parse_analog_outputs`.
+- **Objects package**: `objects/__init__.py` re-exports data types (BinaryInput, AnalogInput, Counter, etc.), `ObjectGroup`, `ObjectVariation`, `get_object_size`, and `get_group_name`; parse functions (`parse_binary_inputs`, `parse_analog_inputs`, etc.) are in the binary, analog, and counter submodules.
+- **Groups**: `objects/groups.py` defines `ObjectGroup`, `ObjectVariation`, `OBJECT_SIZES`, `get_object_size()`, and `get_group_name()` for protocol and parsing use.
+- **Layers**: `layers/__init__.py` re-exports `DataLinkLayer`, `TransportLayer`, and `ApplicationLayer`; frame, segment, and request/response types live in the datalink, transport, and application submodules. Data Link (`layers/datalink.py`) validates addresses in `build_frame`, `build_request_link_status`, and `build_reset_link`; `calculate_frame_size` validates the length byte; frame parsing checks CRCs and length. Transport (`layers/transport.py`) validates APDU length (≤ MAX_MESSAGE_SIZE) and `max_payload` (1..MAX_SEGMENT_PAYLOAD) in `segment()`; `TransportSegment.from_bytes` rejects oversized segments; `parse_header()` validates header byte 0-255; reassembly enforces sequence, size limit, and timeout. Application (`layers/application.py`) validates `ObjectHeader` group/variation/qualifier (0-255) and range/count per qualifier in `to_bytes()`; `ObjectHeader.from_bytes()` validates offset and range; `ApplicationRequest` validates sequence and function; `build_confirm()` and `build_read_request()` validate sequence (0-15) and group/variation/start/stop.
+- **Utils**: `utils/__init__.py` re-exports `CRC16DNP3`, `calculate_frame_crc`, `setup_logging`, `get_logger`, `log_frame`, and `log_parsed_frame`. `utils/crc.py` provides DNP3 CRC-16 (polynomial 0x3D65, reflected 0xA6BC, final XOR 0xFFFF); `CRC16DNP3.calculate()` and `calculate_frame_crc()` validate bytes/bytearray; `verify_bytes()` validates 2-byte CRC. `utils/logging.py` validates level (DEBUG/INFO/WARNING/ERROR/CRITICAL), uses UTF-8 for file output, sets `propagate=False`; `log_frame()` and `log_parsed_frame()` validate frame/frame_info types.
+- **Exceptions**: `core/exceptions.py` defines the hierarchy: `DNP3Error` (base); `DNP3CommunicationError` (host, port), `DNP3TimeoutError` (timeout_seconds), `DNP3ProtocolError` (function_code, iin), `DNP3CRCError` (expected_crc, actual_crc), `DNP3FrameError`, `DNP3ObjectError` (group, variation), `DNP3ControlError` (status_code). The top-level `dnp3py` package exports the first five; `DNP3FrameError`, `DNP3ObjectError`, and `DNP3ControlError` are available from `dnp3py.core`. All use `Optional` for context attributes.
 
 ## License
 

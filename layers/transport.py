@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import time
 from typing import List, Optional, Tuple
 
-from pydnp3.core.exceptions import DNP3FrameError
+from dnp3py.core.exceptions import DNP3FrameError
 
 
 # Transport layer constants
@@ -69,15 +69,17 @@ class TransportSegment:
         if len(data) < 1:
             raise DNP3FrameError("Transport segment data too short")
 
+        if len(data) > 1 + MAX_SEGMENT_PAYLOAD:
+            raise DNP3FrameError(
+                f"Transport segment too long: {len(data)} bytes "
+                f"(max {1 + MAX_SEGMENT_PAYLOAD} = 1 header + {MAX_SEGMENT_PAYLOAD} payload)"
+            )
+
         header = data[0]
         sequence = header & SEQUENCE_MASK
         is_first = bool(header & FIR_FLAG)
         is_final = bool(header & FIN_FLAG)
         payload = data[1:]
-
-        # Validate: a segment cannot have neither FIR nor FIN set and be empty
-        # (would indicate a corrupt or malformed segment in the middle of nowhere)
-        # Note: Single-segment messages must have both FIR and FIN set
 
         return cls(sequence, is_first, is_final, payload)
 
@@ -134,11 +136,22 @@ class TransportLayer:
 
         Args:
             apdu: Application layer data to segment
-            max_payload: Maximum payload per segment
+            max_payload: Maximum payload per segment (1 to MAX_SEGMENT_PAYLOAD)
 
         Returns:
             List of transport layer segments (as bytes)
+
+        Raises:
+            DNP3FrameError: If apdu exceeds MAX_MESSAGE_SIZE or max_payload is invalid
         """
+        if len(apdu) > MAX_MESSAGE_SIZE:
+            raise DNP3FrameError(
+                f"APDU exceeds maximum message size: {len(apdu)} > {MAX_MESSAGE_SIZE} bytes"
+            )
+        if not isinstance(max_payload, int) or not (1 <= max_payload <= MAX_SEGMENT_PAYLOAD):
+            raise DNP3FrameError(
+                f"max_payload must be an integer in 1..{MAX_SEGMENT_PAYLOAD}, got {max_payload!r}"
+            )
         if len(apdu) == 0:
             # Empty APDU - single segment with FIR and FIN
             segment = TransportSegment(
@@ -308,11 +321,24 @@ class TransportLayer:
         Parse a transport header byte.
 
         Args:
-            header_byte: Single header byte
+            header_byte: Single header byte (0-255)
 
         Returns:
             Dictionary with sequence, is_first, is_final
+
+        Raises:
+            DNP3FrameError: If header_byte is not an integer in 0-255
         """
+        try:
+            header_byte = int(header_byte)
+        except (TypeError, ValueError) as e:
+            raise DNP3FrameError(
+                f"Transport header must be an integer (0-255), got {type(header_byte).__name__}"
+            ) from e
+        if not 0 <= header_byte <= 255:
+            raise DNP3FrameError(
+                f"Transport header out of range: {header_byte} (must be 0-255)"
+            )
         return {
             "sequence": header_byte & SEQUENCE_MASK,
             "is_first": bool(header_byte & FIR_FLAG),

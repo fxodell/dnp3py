@@ -44,3 +44,10 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Tooling / misc
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.log
+.claude/settings.local.json

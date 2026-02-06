@@ -1,6 +1,12 @@
 """Core DNP3 driver components.
 
-Public API: DNP3Master, DNP3Config, and the DNP3 exception hierarchy.
+This package provides:
+- DNP3Master: main API (thread-safe, use connect() or open()/close())
+- DNP3Config: configuration (validate() called on master init)
+- PollResult: return type of integrity_poll() and read_class()
+- DNP3 exception hierarchy: DNP3Error, DNP3CommunicationError, DNP3TimeoutError,
+  DNP3ProtocolError, DNP3CRCError, DNP3FrameError, DNP3ObjectError, DNP3ControlError
+
 Use __all__ as the canonical list of exported names.
 """
 
@@ -15,7 +21,7 @@ from .exceptions import (
     DNP3ProtocolError,
     DNP3TimeoutError,
 )
-from .master import DNP3Master
+from .master import DNP3Master, PollResult
 
 __all__ = [
     "DNP3Config",
@@ -27,5 +33,6 @@ __all__ = [
     "DNP3Master",
     "DNP3ObjectError",
     "DNP3ProtocolError",
+    "PollResult",
     "DNP3TimeoutError",
 ]

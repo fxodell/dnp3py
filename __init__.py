@@ -22,14 +22,18 @@ Supported Features:
     - Time synchronization
     - Unsolicited responses
 
+Public API (import from dnp3py):
+    DNP3Master, DNP3Config, DNP3Error, DNP3CommunicationError,
+    DNP3TimeoutError, DNP3ProtocolError, DNP3CRCError, __version__
+
 References:
     - IEEE Std 1815 (DNP3 Standard)
     - DNP3 Technical Bulletin TB2004-001
 """
 
-from pydnp3.core.master import DNP3Master
-from pydnp3.core.config import DNP3Config
-from pydnp3.core.exceptions import (
+from dnp3py.core.master import DNP3Master
+from dnp3py.core.config import DNP3Config
+from dnp3py.core.exceptions import (
     DNP3Error,
     DNP3CommunicationError,
     DNP3TimeoutError,
@@ -39,12 +43,14 @@ from pydnp3.core.exceptions import (
 
 __version__ = "1.0.0"
 __author__ = "DNP3 Driver Development"
+
 __all__ = [
-    "DNP3Master",
-    "DNP3Config",
-    "DNP3Error",
     "DNP3CommunicationError",
-    "DNP3TimeoutError",
-    "DNP3ProtocolError",
+    "DNP3Config",
     "DNP3CRCError",
+    "DNP3Error",
+    "DNP3Master",
+    "DNP3ProtocolError",
+    "DNP3TimeoutError",
+    "__version__",
 ]

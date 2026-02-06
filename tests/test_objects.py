@@ -2,7 +2,7 @@
 
 import pytest
 import struct
-from pydnp3.objects.binary import (
+from dnp3py.objects.binary import (
     BinaryInput,
     BinaryOutput,
     BinaryOutputCommand,
@@ -10,15 +10,15 @@ from pydnp3.objects.binary import (
     parse_binary_inputs,
     parse_binary_outputs,
 )
-from pydnp3.objects.analog import (
+from dnp3py.objects.analog import (
     AnalogInput,
     AnalogOutput,
     AnalogOutputCommand,
     AnalogFlags,
     parse_analog_inputs,
 )
-from pydnp3.objects.counter import Counter, CounterFlags, parse_counters
-from pydnp3.core.config import ControlCode, ControlStatus
+from dnp3py.objects.counter import Counter, CounterFlags, parse_counters
+from dnp3py.core.config import ControlCode, ControlStatus
 
 
 class TestBinaryInput:
@@ -194,6 +194,18 @@ class TestAnalogInput:
 
         assert abs(ai.value - value) < 0.000001
 
+    def test_from_bytes_invalid_index_or_variation(self):
+        """Test from_bytes with invalid index or variation raises."""
+        data = bytes([0]) + struct.pack("<i", 42)
+        with pytest.raises(ValueError, match="index"):
+            AnalogInput.from_bytes(data, index=-1, variation=1)
+        with pytest.raises(ValueError, match="variation"):
+            AnalogInput.from_bytes(data, index=0, variation=0)
+        with pytest.raises(ValueError, match="variation"):
+            AnalogInput.from_bytes(data, index=0, variation=7)
+        with pytest.raises(TypeError, match="data must be"):
+            AnalogInput.from_bytes([1, 2, 3, 4, 5], index=0, variation=1)
+
     def test_to_bytes_round_trip(self):
         """Test serialization/deserialization round trip."""
         original = AnalogInput(index=5, value=42.5, flags=AnalogFlags.ONLINE)
@@ -264,6 +276,19 @@ class TestAnalogOutputCommand:
         parsed = AnalogOutputCommand.from_bytes(data, index=5, variation=1)
 
         assert parsed.value == cmd.value
+
+    def test_create_invalid_index(self):
+        """Test create with invalid index raises."""
+        with pytest.raises(ValueError, match="index"):
+            AnalogOutputCommand.create(index=-1, value=50.0)
+
+    def test_from_bytes_invalid_args(self):
+        """Test from_bytes with invalid args raises."""
+        data = bytes(5)
+        with pytest.raises(ValueError, match="variation"):
+            AnalogOutputCommand.from_bytes(data, index=0, variation=5)
+        with pytest.raises(ValueError, match="index"):
+            AnalogOutputCommand.from_bytes(data, index=-1, variation=1)
 
 
 class TestCounter:
@@ -343,6 +368,16 @@ class TestParseFunctions:
         for i, ai in enumerate(inputs):
             assert ai.value == values[i]
             assert ai.index == i
+
+    def test_parse_analog_inputs_invalid_args(self):
+        """Test parse_analog_inputs with invalid variation raises."""
+        data = bytes(15)
+        with pytest.raises(ValueError, match="variation"):
+            parse_analog_inputs(data, start_index=0, count=3, variation=0)
+        with pytest.raises(ValueError, match="count"):
+            parse_analog_inputs(data, start_index=0, count=-1, variation=1)
+        with pytest.raises(ValueError, match="start_index"):
+            parse_analog_inputs(data, start_index=-1, count=3, variation=1)
 
     def test_parse_counters(self):
         """Test parsing multiple counters."""

@@ -23,12 +23,12 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Any
 from enum import IntEnum
 
-from pydnp3.core.config import (
+from dnp3py.core.config import (
     AppLayerFunction,
     QualifierCode,
     IINFlags,
 )
-from pydnp3.core.exceptions import DNP3ProtocolError, DNP3ObjectError
+from dnp3py.core.exceptions import DNP3ProtocolError, DNP3ObjectError
 
 
 # Application control byte flags
@@ -59,6 +59,11 @@ class ObjectHeader:
 
     def to_bytes(self) -> bytes:
         """Serialize object header to bytes."""
+        for name, val in (("group", self.group), ("variation", self.variation), ("qualifier", self.qualifier)):
+            if not isinstance(val, int) or not (0 <= val <= 255):
+                raise DNP3ObjectError(
+                    f"Object header {name} must be an integer 0-255, got {val!r}"
+                )
         result = bytearray([self.group, self.variation, self.qualifier])
 
         # Add range/count based on qualifier
@@ -67,6 +72,10 @@ class ObjectHeader:
                 raise DNP3ObjectError(
                     f"Invalid range: start {self.range_start} > stop {self.range_stop}"
                 )
+            if not 0 <= self.range_start <= 255 or not 0 <= self.range_stop <= 255:
+                raise DNP3ObjectError(
+                    f"UINT8 range must be 0-255: start={self.range_start}, stop={self.range_stop}"
+                )
             result.append(self.range_start & 0xFF)
             result.append(self.range_stop & 0xFF)
         elif self.qualifier == QualifierCode.UINT16_START_STOP:
@@ -74,20 +83,32 @@ class ObjectHeader:
                 raise DNP3ObjectError(
                     f"Invalid range: start {self.range_start} > stop {self.range_stop}"
                 )
+            if not 0 <= self.range_start <= 0xFFFF or not 0 <= self.range_stop <= 0xFFFF:
+                raise DNP3ObjectError(
+                    f"UINT16 range must be 0-65535: start={self.range_start}, stop={self.range_stop}"
+                )
             result.extend(self.range_start.to_bytes(2, "little"))
             result.extend(self.range_stop.to_bytes(2, "little"))
         elif self.qualifier == QualifierCode.ALL_OBJECTS:
             pass  # No range field
         elif self.qualifier == QualifierCode.UINT8_COUNT:
+            if not isinstance(self.count, int) or not 0 <= self.count <= 255:
+                raise DNP3ObjectError(f"UINT8 count must be 0-255, got {self.count!r}")
             result.append(self.count & 0xFF)
         elif self.qualifier == QualifierCode.UINT16_COUNT:
+            if not isinstance(self.count, int) or not 0 <= self.count <= 0xFFFF:
+                raise DNP3ObjectError(f"UINT16 count must be 0-65535, got {self.count!r}")
             result.extend(self.count.to_bytes(2, "little"))
         elif self.qualifier in (
             QualifierCode.UINT8_COUNT_UINT8_INDEX,
             QualifierCode.UINT8_COUNT_UINT16_INDEX,
         ):
+            if not isinstance(self.count, int) or not 0 <= self.count <= 255:
+                raise DNP3ObjectError(f"UINT8 count must be 0-255, got {self.count!r}")
             result.append(self.count & 0xFF)
         elif self.qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
+            if not isinstance(self.count, int) or not 0 <= self.count <= 0xFFFF:
+                raise DNP3ObjectError(f"UINT16 count must be 0-65535, got {self.count!r}")
             result.extend(self.count.to_bytes(2, "little"))
         else:
             raise DNP3ObjectError(f"Unsupported qualifier code: 0x{self.qualifier:02X}")
@@ -109,6 +130,14 @@ class ObjectHeader:
         Returns:
             Tuple of (ObjectHeader, bytes consumed)
         """
+        if not isinstance(offset, int) or offset < 0:
+            raise DNP3ObjectError(
+                f"Invalid offset: must be non-negative integer, got {offset!r}"
+            )
+        if offset > len(data):
+            raise DNP3ObjectError(
+                f"Offset beyond data length: offset={offset}, len(data)={len(data)}"
+            )
         if len(data) - offset < 3:
             raise DNP3ObjectError("Insufficient data for object header")
 
@@ -459,7 +488,7 @@ class ApplicationResponse:
             Size of object data in bytes
         """
         # Import here to avoid circular dependency
-        from pydnp3.objects.groups import get_object_size
+        from dnp3py.objects.groups import get_object_size
 
         if count == 0:
             return 0
@@ -572,12 +601,19 @@ class ApplicationLayer:
         Build an application layer confirmation.
 
         Args:
-            sequence: Sequence number to confirm
+            sequence: Sequence number to confirm (0-15)
             unsolicited: True if confirming an unsolicited response
 
         Returns:
             APDU bytes
+
+        Raises:
+            ValueError: If sequence is not in 0-15
         """
+        if not isinstance(sequence, int) or not 0 <= sequence <= SEQ_MASK:
+            raise ValueError(
+                f"Application sequence must be 0-15, got {sequence!r}"
+            )
         control = sequence & SEQ_MASK
         control |= FIR_FLAG | FIN_FLAG
         if unsolicited:
@@ -596,14 +632,29 @@ class ApplicationLayer:
         Build a READ request for specific objects.
 
         Args:
-            group: Object group number
-            variation: Object variation (0 = any)
-            start: Start index (None for all objects)
-            stop: Stop index
+            group: Object group number (0-255)
+            variation: Object variation (0 = any, 0-255)
+            start: Start index (None for all objects); must be >= 0 if set
+            stop: Stop index; must be >= 0 and >= start if set
 
         Returns:
             APDU bytes
+
+        Raises:
+            ValueError: If group/variation/start/stop are out of range
         """
+        if not isinstance(group, int) or not 0 <= group <= 255:
+            raise ValueError(f"Group must be 0-255, got {group!r}")
+        if not isinstance(variation, int) or not 0 <= variation <= 255:
+            raise ValueError(f"Variation must be 0-255, got {variation!r}")
+        if start is not None:
+            if not isinstance(start, int) or start < 0:
+                raise ValueError(f"Start index must be non-negative integer, got {start!r}")
+        if stop is not None:
+            if not isinstance(stop, int) or stop < 0:
+                raise ValueError(f"Stop index must be non-negative integer, got {stop!r}")
+        if start is not None and stop is not None and start > stop:
+            raise ValueError(f"Start must be <= stop, got start={start}, stop={stop}")
         if start is not None and stop is not None:
             obj_header = ObjectHeader(
                 group=group,
