@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quick test of dnp3py with specified connection parameters."""
+"""Quick test of nfm-dnp3 (dnp3py) with specified connection parameters."""
 
 from dnp3py import DNP3Config, DNP3Master
 from dnp3py.utils.logging import setup_logging

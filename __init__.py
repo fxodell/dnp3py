@@ -41,7 +41,7 @@ from dnp3py.core.exceptions import (
 )
 from dnp3py.core.master import DNP3Master
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "DNP3 Driver Development"
 
 __all__ = [

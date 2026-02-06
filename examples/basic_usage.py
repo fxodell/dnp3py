@@ -5,7 +5,7 @@ Basic DNP3 driver usage examples.
 This script demonstrates how to use the DNP3 driver to communicate
 with a DNP3 outstation over TCP/IP.
 
-Run from the project root with dnp3py installed: pip install -e .
+Run from the project root with nfm-dnp3 installed: pip install nfm-dnp3 (or pip install -e . from source).
 """
 
 import time

@@ -1,6 +1,6 @@
-# dnp3py
+# nfm-dnp3 (dnp3py)
 
-A pure Python implementation of the DNP3 (Distributed Network Protocol 3) protocol for SCADA communications over TCP/IP.
+A pure Python implementation of the DNP3 (Distributed Network Protocol 3) protocol for SCADA communications over TCP/IP. Install from PyPI as **nfm-dnp3**; import in Python as **dnp3py**.
 
 ## Overview
 
@@ -35,11 +35,14 @@ This driver implements the DNP3 protocol stack to communicate with DNP3 outstati
 git clone https://github.com/fxodell/dnp3py.git
 cd dnp3py
 
-# Install in development mode (recommended)
+# Install from PyPI
+pip install nfm-dnp3
+
+# Or install in development mode from source
 pip install -e .
 ```
 
-After installation, `dnp3py` is available from any directory.
+After installation, use `from dnp3py import ...` from any directory.
 
 ## Quick Start
 
@@ -79,7 +82,7 @@ with master.connect():
     master.direct_operate_analog(0, value=50.0)
 ```
 
-**Run the interactive examples** (requires dnp3py installed):
+**Run the interactive examples** (requires `nfm-dnp3` installed):
 
 ```bash
 python examples/basic_usage.py
@@ -236,7 +239,7 @@ For frame, object, or control-specific errors, use `from dnp3py.core import DNP3
 
 ## Running Tests
 
-From the project root (with dnp3py installed):
+From the project root (with `nfm-dnp3` or `pip install -e .`):
 
 ```bash
 pytest tests/ -v
@@ -275,7 +278,7 @@ pytest tests/ -q && ruff check . && ruff format --check . && bandit -r . -c pypr
 - **Layers**: `layers/__init__.py` re-exports `DataLinkLayer`, `TransportLayer`, and `ApplicationLayer`; frame, segment, and request/response types live in the datalink, transport, and application submodules. Data Link (`layers/datalink.py`) validates addresses in `build_frame`, `build_request_link_status`, and `build_reset_link`; `calculate_frame_size` validates the length byte; frame parsing checks CRCs and length. Transport (`layers/transport.py`) validates APDU length (≤ MAX_MESSAGE_SIZE) and `max_payload` (1..MAX_SEGMENT_PAYLOAD) in `segment()`; `TransportSegment.from_bytes` rejects oversized segments; `parse_header()` validates header byte 0-255; reassembly enforces sequence, size limit, and timeout. Application (`layers/application.py`) validates `ObjectHeader` group/variation/qualifier (0-255) and range/count per qualifier in `to_bytes()`; `ObjectHeader.from_bytes()` validates offset and range; `ApplicationRequest` validates sequence and function; `build_confirm()` and `build_read_request()` validate sequence (0-15) and group/variation/start/stop.
 - **Utils**: `utils/__init__.py` re-exports `CRC16DNP3`, `calculate_frame_crc`, `setup_logging`, `get_logger`, `log_frame`, and `log_parsed_frame`. `utils/crc.py` provides DNP3 CRC-16 (polynomial 0x3D65, reflected 0xA6BC, final XOR 0xFFFF); `CRC16DNP3.calculate()` and `calculate_frame_crc()` validate bytes/bytearray; `verify_bytes()` validates 2-byte CRC. `utils/logging.py` validates level (DEBUG/INFO/WARNING/ERROR/CRITICAL), uses UTF-8 for file output, sets `propagate=False`; `log_frame()` and `log_parsed_frame()` validate frame/frame_info types.
 - **Exceptions**: `core/exceptions.py` defines the hierarchy: `DNP3Error` (base); `DNP3CommunicationError` (host, port), `DNP3TimeoutError` (timeout_seconds), `DNP3ProtocolError` (function_code, iin), `DNP3CRCError` (expected_crc, actual_crc), `DNP3FrameError`, `DNP3ObjectError` (group, variation), `DNP3ControlError` (status_code). The top-level `dnp3py` package exports the first five; `DNP3FrameError`, `DNP3ObjectError`, and `DNP3ControlError` are available from `dnp3py.core`. All use `Optional` for context attributes.
-- **Publishing to PyPI**: (1) Create an account at [pypi.org](https://pypi.org/account/register/) and create an [API token](https://pypi.org/manage/account/token/). (2) Install build tools: `pip install build twine`. (3) Bump version in `__init__.py` if needed, then build: `python -m build`. (4) Upload: `twine upload dist/*` (use `__token__` as username and your token as password, or set `TWINE_USERNAME=__token__` and `TWINE_PASSWORD=pypi-...`). To test first, use Test PyPI: `twine upload --repository testpypi dist/*`.
+- **Publishing to PyPI**: This project is published as **nfm-dnp3** on PyPI (Trusted Publisher from GitHub Actions). (1) Bump version in `__init__.py`, (2) tag and push (e.g. `git tag v1.0.1 && git push origin v1.0.1`); the publish workflow uploads to PyPI. For manual upload: `pip install build twine`, `python -m build`, then `twine upload dist/*` with PyPI token.
 
 ## Security
 

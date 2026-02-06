@@ -1,8 +1,8 @@
-# dnp3py – Project Context
+# nfm-dnp3 / dnp3py – Project Context
 
 ## What this project is
 
-**dnp3py** is a pure Python implementation of the DNP3 (Distributed Network Protocol 3) protocol for SCADA communications over TCP/IP. It acts as a **master station** talking to DNP3 outstations (slaves): reading points (binary, analog, counter), controlling outputs, and handling events.
+**nfm-dnp3** is the PyPI distribution name; the Python import package is **dnp3py**. It is a pure Python implementation of the DNP3 (Distributed Network Protocol 3) protocol for SCADA communications over TCP/IP. It acts as a **master station** talking to DNP3 outstations (slaves): reading points (binary, analog, counter), controlling outputs, and handling events.
 
 ## Stack and layout
 
@@ -14,7 +14,7 @@
 
 ## Conventions and recent work
 
-- **Install**: `pip install -e .` from repo root (or `pip install -e ".[dev]"` for tests, lint, and security). `setup.py` maps `package_dir={"dnp3py": "."}` and excludes the `tests` package from installation; version is read from `__init__.py`. Dev extras: pytest, pytest-cov, bandit, ruff, pyright. Config for bandit, ruff, and pyright lives in `pyproject.toml`. `dnp3py` is the top-level package. Subpackages use relative imports; public API is declared via `__all__` in each `__init__.py`.
+- **Install**: PyPI: `pip install nfm-dnp3`. From source: `pip install -e .` from repo root (or `pip install -e ".[dev]"` for tests, lint, and security). `setup.py` uses `name="nfm-dnp3"` and maps `package_dir={"dnp3py": "."}`; version is read from `__init__.py`. Dev extras: pytest, pytest-cov, bandit, ruff, pyright. Config for bandit, ruff, and pyright lives in `pyproject.toml`. The top-level import package is `dnp3py`. Subpackages use relative imports; public API is declared via `__all__` in each `__init__.py`.
 - **Git**: `.gitignore` covers bytecode, build/dist, `*.egg-info/`, venvs, IDE dirs, pytest/coverage and tool caches (e.g. `.ruff_cache/`, `.mypy_cache/`), `*.log`, and `.claude/settings.local.json`. The `dnp3py.egg-info/` directory is created by `pip install -e .` and is ignored; do not commit it.
 - **Config**: `DNP3Config.validate()` normalizes and validates host, port, addresses (0-65519), timeouts (float, positive), max_frame_size (1-250), max_apdu_size (1-65536), poll intervals (≥0), and log_level (DEBUG/INFO/WARNING/ERROR/CRITICAL); it coerces numeric fields and is called when creating a `DNP3Master`. `IINFlags.from_bytes` validates iin1/iin2.
 - **Objects**: Binary, analog, and counter modules validate input length and value ranges in `from_bytes`/`to_bytes` and in `parse_*`; invalid data raises clear `ValueError` or `TypeError`. Analog (`objects/analog.py`) validates `data` type, `index` ≥ 0, `variation` range (1–6 or 1–4), and value ranges; `AnalogOutputCommand.create()` and `parse_analog_inputs`/`parse_analog_outputs` validate their arguments.

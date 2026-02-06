@@ -28,7 +28,7 @@ version = _version_match.group(1)
 _long_description = (_root / "README.md").read_text(encoding="utf-8")
 
 setup(
-    name="dnp3py",
+    name="nfm-dnp3",
     version=version,
     description="A pure Python DNP3 protocol driver for SCADA communication",
     long_description=_long_description,
