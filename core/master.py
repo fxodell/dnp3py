@@ -291,6 +291,8 @@ class DNP3Master:
                         )
                         del self._rx_buffer[:consumed]
 
+                        if not self._is_for_this_master(frame):
+                            continue
                         return frame
                 except (DNP3CRCError, DNP3FrameError):
                     # Invalid frame, skip first byte and try again
@@ -320,6 +322,33 @@ class DNP3Master:
                     host=self.config.host,
                     port=self.config.port,
                 ) from e
+
+    def _is_for_this_master(self, frame: DataLinkFrame) -> bool:
+        """
+        Check that a frame was sent by the outstation to this master.
+
+        Data link layer, IEEE 1815-2012 Clause 9: a station processes only
+        frames whose destination is its own address. A frame with another
+        destination, from another source, or sent by a master (DIR set) is
+        dropped.
+
+        Args:
+            frame: A parsed frame
+
+        Returns:
+            True if the frame should be processed
+        """
+        if (
+            frame.destination != self.config.master_address
+            or frame.source != self.config.outstation_address
+            or frame.is_from_master
+        ):
+            self._logger.debug(
+                f"Dropping frame not addressed to master {self.config.master_address} "
+                f"from outstation {self.config.outstation_address}: {frame}"
+            )
+            return False
+        return True
 
     def _send_request(
         self,
