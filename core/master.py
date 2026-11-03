@@ -34,7 +34,7 @@ from dnp3py.layers.application import (
     ApplicationResponse,
     ObjectHeader,
 )
-from dnp3py.layers.datalink import DataLinkFrame, DataLinkLayer
+from dnp3py.layers.datalink import DataLinkFrame, DataLinkLayer, PrimaryFunction
 from dnp3py.layers.transport import TransportLayer
 from dnp3py.objects.analog import (
     AnalogInput,
@@ -114,6 +114,10 @@ class DNP3Master:
         # Receive buffer
         self._rx_buffer = bytearray()
 
+        # FCB the next CONFIRMED_USER_DATA from the outstation must carry;
+        # known once the outstation has reset the link, None before that.
+        self._rx_expected_fcb: Optional[bool] = None
+
         # Logger
         self._logger = get_logger()
 
@@ -159,6 +163,7 @@ class DNP3Master:
                 self._socket = sock
                 self._connected = True
                 self._rx_buffer.clear()
+                self._rx_expected_fcb = None
                 self._logger.info(f"Connected to {self.config.host}:{self.config.port}")
 
                 # Optional: Reset link state
@@ -392,6 +397,8 @@ class DNP3Master:
                 )
 
             frame = self._receive_frame(remaining_timeout)
+            if not self._answer_link_frame(frame):
+                continue
 
             # Reassemble transport layer
             apdu, complete = self._transport.reassemble(
@@ -437,6 +444,53 @@ class DNP3Master:
             return fragments[0]
 
         return self._merge_fragments(fragments)
+
+    def _answer_link_frame(self, frame: DataLinkFrame) -> bool:
+        """
+        Answer a link-layer frame from the outstation as the data link layer requires.
+
+        Data link layer, IEEE 1815-2012 Clause 9: secondary frames (ACK, NACK,
+        LINK_STATUS, NOT_SUPPORTED) carry no user data and are not passed on.
+        RESET_LINK_STATES and TEST_LINK_STATES are answered with ACK,
+        REQUEST_LINK_STATUS with LINK_STATUS, and CONFIRMED_USER_DATA with ACK.
+        After a reset, a CONFIRMED_USER_DATA frame whose FCB is not the
+        expected one repeats a frame already accepted (its ACK was lost): it is
+        acknowledged again but not delivered twice.
+
+        Args:
+            frame: A frame received from the outstation
+
+        Returns:
+            True if the frame carries user data for the transport layer
+        """
+        if not frame.is_primary:
+            self._logger.debug(f"Link frame without user data: {frame}")
+            return False
+
+        function = frame.function_code
+        if function == PrimaryFunction.RESET_LINK:
+            self._rx_expected_fcb = True
+            self._send_frame(self._datalink.build_ack())
+            return False
+        if function == PrimaryFunction.TEST_LINK:
+            self._send_frame(self._datalink.build_ack())
+            return False
+        if function == PrimaryFunction.REQUEST_LINK_STATUS:
+            self._send_frame(self._datalink.build_link_status())
+            return False
+        if function == PrimaryFunction.USER_DATA_CONFIRMED:
+            self._send_frame(self._datalink.build_ack())
+            if self._rx_expected_fcb is not None:
+                if frame.fcb != self._rx_expected_fcb:
+                    self._logger.debug(f"Ignoring a repeated CONFIRMED_USER_DATA frame: {frame}")
+                    return False
+                self._rx_expected_fcb = not self._rx_expected_fcb
+            return bool(frame.user_data)
+        if function == PrimaryFunction.USER_DATA_UNCONFIRMED:
+            return bool(frame.user_data)
+
+        self._logger.debug(f"Ignoring link frame with function 0x{function:02X}: {frame}")
+        return False
 
     def _merge_fragments(self, fragments: list[ApplicationResponse]) -> ApplicationResponse:
         """

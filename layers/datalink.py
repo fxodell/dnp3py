@@ -312,6 +312,54 @@ class DataLinkLayer:
 
         return bytes(frame)
 
+    def build_secondary_frame(
+        self,
+        function: int,
+        destination: Optional[int] = None,
+        source: Optional[int] = None,
+    ) -> bytes:
+        """
+        Build a secondary (PRM=0) frame from the master, such as ACK or LINK_STATUS.
+
+        Args:
+            function: Secondary function code (SecondaryFunction)
+            destination: Destination address (defaults to outstation)
+            source: Source address (defaults to master)
+
+        Returns:
+            Frame bytes
+        """
+        if destination is None:
+            destination = self.outstation_address
+        else:
+            self._validate_address(destination, "Destination")
+        if source is None:
+            source = self.master_address
+        else:
+            self._validate_address(source, "Source")
+
+        control = ControlByte.DIR | (function & ControlByte.FUNC_MASK)
+        length = 5  # Control + addresses, no user data
+
+        header = bytearray(START_BYTES)
+        header.append(length)
+        header.append(control)
+        header.extend(destination.to_bytes(2, "little"))
+        header.extend(source.to_bytes(2, "little"))
+
+        frame = bytearray(header)
+        frame.extend(CRC16DNP3.calculate_bytes(header))
+
+        return bytes(frame)
+
+    def build_ack(self) -> bytes:
+        """Build an ACK frame to the outstation."""
+        return self.build_secondary_frame(SecondaryFunction.ACK)
+
+    def build_link_status(self) -> bytes:
+        """Build a LINK_STATUS frame to the outstation."""
+        return self.build_secondary_frame(SecondaryFunction.LINK_STATUS)
+
     def parse_frame(self, data: bytes) -> tuple[DataLinkFrame, int]:
         """
         Parse a DNP3 data link frame from bytes.
