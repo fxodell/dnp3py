@@ -498,10 +498,15 @@ class ApplicationResponse:
             Size of object data in bytes
         """
         # Import here to avoid circular dependency
-        from dnp3py.objects.groups import get_object_size
+        from dnp3py.objects.groups import get_object_size, get_packed_size
 
         if count == 0:
             return 0
+
+        # Packed variations: 1 or 2 bits per point, rounded up to whole octets
+        packed_size = get_packed_size(group, variation, count)
+        if packed_size is not None:
+            return packed_size
 
         # Get object size for this group/variation
         obj_size = get_object_size(group, variation)

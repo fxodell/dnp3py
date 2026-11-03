@@ -11,6 +11,7 @@ For parsing response data, use the submodules directly:
 - dnp3py.objects.binary: parse_binary_inputs, parse_binary_outputs
 - dnp3py.objects.analog: parse_analog_inputs, parse_analog_outputs
 - dnp3py.objects.counter: parse_counters
+- dnp3py.objects.events: decode_event (event groups 2, 11, 22, 32)
 """
 
 from dnp3py.objects.analog import AnalogInput, AnalogOutput, AnalogOutputCommand

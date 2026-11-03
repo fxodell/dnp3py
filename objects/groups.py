@@ -188,8 +188,8 @@ OBJECT_SIZES = {
     # =========================================================================
     # Binary Output Command Event (Group 13) - Event data
     # =========================================================================
-    (13, 1): 11,  # Same as CROB without additional status
-    (13, 2): 17,  # CROB(11) + time(6)
+    (13, 1): 1,  # Commanded state(bit 7) + control status(bits 0-6)
+    (13, 2): 7,  # Commanded state and status(1) + time(6)
     # =========================================================================
     # Counter (Group 20) - Static data
     # =========================================================================
@@ -208,14 +208,14 @@ OBJECT_SIZES = {
     (21, 2): 3,  # 16-bit with flag: value(2) + flag(1)
     (21, 3): 5,  # 32-bit delta with flag: value(4) + flag(1)
     (21, 4): 3,  # 16-bit delta with flag: value(2) + flag(1)
-    (21, 5): 4,  # 32-bit without flag
-    (21, 6): 2,  # 16-bit without flag
-    (21, 7): 4,  # 32-bit delta without flag
-    (21, 8): 2,  # 16-bit delta without flag
-    (21, 9): 11,  # 32-bit with flag and time: flag(1) + value(4) + time(6)
-    (21, 10): 9,  # 16-bit with flag and time: flag(1) + value(2) + time(6)
-    (21, 11): 11,  # 32-bit delta with flag and time
-    (21, 12): 9,  # 16-bit delta with flag and time
+    (21, 5): 11,  # 32-bit with flag and time: flag(1) + value(4) + time(6)
+    (21, 6): 9,  # 16-bit with flag and time: flag(1) + value(2) + time(6)
+    (21, 7): 11,  # 32-bit delta with flag and time
+    (21, 8): 9,  # 16-bit delta with flag and time
+    (21, 9): 4,  # 32-bit without flag
+    (21, 10): 2,  # 16-bit without flag
+    (21, 11): 4,  # 32-bit delta without flag
+    (21, 12): 2,  # 16-bit delta without flag
     # =========================================================================
     # Counter Event (Group 22) - Event data
     # =========================================================================
@@ -328,7 +328,7 @@ OBJECT_SIZES = {
     (50, 1): 6,  # Absolute time (48-bit milliseconds since epoch)
     (50, 2): 10,  # Absolute time with interval
     (50, 3): 6,  # Last recorded time
-    (50, 4): 6,  # Indexed absolute time
+    (50, 4): 11,  # Indexed absolute time and long interval: time(6) + interval(4) + units(1)
     # =========================================================================
     # Time and Date CTO (Group 51) - Common Time of Occurrence
     # =========================================================================
@@ -342,7 +342,7 @@ OBJECT_SIZES = {
     # =========================================================================
     # Internal Indications (Group 80)
     # =========================================================================
-    (80, 1): 1,  # Internal indications packed
+    (80, 1): None,  # Internal indications packed (1 bit per index) - variable size
     # =========================================================================
     # Octet String (Group 110, 111) - Variable length
     # =========================================================================
@@ -351,9 +351,24 @@ OBJECT_SIZES = {
 }
 
 
+# Groups whose variation is the object's length in octets (octet strings,
+# virtual terminal)
+LENGTH_IN_VARIATION_GROUPS = (110, 111, 112, 113)
+
+# Packed groups: (group, variation) -> bits per point
+PACKED_BITS = {
+    (1, 1): 1,  # Binary input packed
+    (3, 1): 2,  # Double-bit binary input packed
+    (10, 1): 1,  # Binary output packed
+    (80, 1): 1,  # Internal indications packed
+}
+
+
 def get_object_size(group: int, variation: int) -> Optional[int]:
     """
     Get the size of an object in bytes.
+
+    For groups 110-113 the variation is the length of the object in octets.
 
     Args:
         group: Object group number
@@ -362,7 +377,27 @@ def get_object_size(group: int, variation: int) -> Optional[int]:
     Returns:
         Size in bytes, or None if variable/packed or unknown (group, variation)
     """
+    if group in LENGTH_IN_VARIATION_GROUPS and variation > 0:
+        return variation
     return OBJECT_SIZES.get((group, variation))
+
+
+def get_packed_size(group: int, variation: int, count: int) -> Optional[int]:
+    """
+    Get the size in bytes of `count` points of a packed variation.
+
+    Args:
+        group: Object group number
+        variation: Object variation
+        count: Number of points
+
+    Returns:
+        Size in bytes, or None if (group, variation) is not packed
+    """
+    bits = PACKED_BITS.get((group, variation))
+    if bits is None:
+        return None
+    return (count * bits + 7) // 8
 
 
 def get_group_name(group: int) -> str:

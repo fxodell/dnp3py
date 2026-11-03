@@ -51,6 +51,7 @@ from dnp3py.objects.binary import (
     parse_binary_outputs,
 )
 from dnp3py.objects.counter import Counter, parse_counters
+from dnp3py.objects.events import EVENT_GROUPS, decode_event, event_size
 from dnp3py.objects.groups import ObjectGroup, ObjectVariation, get_object_size
 from dnp3py.utils.logging import get_logger, log_frame
 
@@ -1064,20 +1065,8 @@ class DNP3Master:
                         )
                     elif group == ObjectGroup.COUNTER:
                         result.counters.append(Counter.from_bytes(obj_data, index, variation))
-                    elif group == ObjectGroup.BINARY_INPUT_EVENT:
-                        result.binary_inputs.append(
-                            BinaryInput.from_bytes(obj_data, index, variation)
-                        )
-                    elif group == ObjectGroup.BINARY_OUTPUT_EVENT:
-                        result.binary_outputs.append(
-                            BinaryOutput.from_bytes(obj_data, index, variation)
-                        )
-                    elif group == ObjectGroup.ANALOG_INPUT_EVENT:
-                        result.analog_inputs.append(
-                            AnalogInput.from_bytes(obj_data, index, variation)
-                        )
-                    elif group == ObjectGroup.COUNTER_EVENT:
-                        result.counters.append(Counter.from_bytes(obj_data, index, variation))
+                    elif group in EVENT_GROUPS:
+                        self._add_event(result, group, variation, obj_data, index)
 
                 continue
 
@@ -1124,25 +1113,32 @@ class DNP3Master:
                 result.counters.extend(
                     parse_counters(obj_data, obj_header.range_start, count, variation)
                 )
-            # Handle event groups (map to their static counterparts)
-            elif group == ObjectGroup.BINARY_INPUT_EVENT:
-                result.binary_inputs.extend(
-                    parse_binary_inputs(obj_data, obj_header.range_start, count, variation)
-                )
-            elif group == ObjectGroup.BINARY_OUTPUT_EVENT:
-                result.binary_outputs.extend(
-                    parse_binary_outputs(obj_data, obj_header.range_start, count, variation)
-                )
-            elif group == ObjectGroup.ANALOG_INPUT_EVENT:
-                result.analog_inputs.extend(
-                    parse_analog_inputs(obj_data, obj_header.range_start, count, variation)
-                )
-            elif group == ObjectGroup.COUNTER_EVENT:
-                result.counters.extend(
-                    parse_counters(obj_data, obj_header.range_start, count, variation)
-                )
+            # Event groups have their own layouts (flags, value, time)
+            elif group in EVENT_GROUPS:
+                size = event_size(group, variation)
+                for i in range(count):
+                    self._add_event(
+                        result,
+                        group,
+                        variation,
+                        obj_data[i * size : (i + 1) * size],
+                        obj_header.range_start + i,
+                    )
 
         return result
+
+    @staticmethod
+    def _add_event(result: PollResult, group: int, variation: int, data: bytes, index: int) -> None:
+        """Decode one event object and add it to the list for its point type."""
+        event = decode_event(group, variation, data, index)
+        if isinstance(event, BinaryInput):
+            result.binary_inputs.append(event)
+        elif isinstance(event, BinaryOutput):
+            result.binary_outputs.append(event)
+        elif isinstance(event, Counter):
+            result.counters.append(event)
+        else:
+            result.analog_inputs.append(event)
 
     def _parse_binary_inputs(self, response: ApplicationResponse) -> list[BinaryInput]:
         """Parse binary inputs from response."""

@@ -188,6 +188,7 @@ class BinaryOutput:
     index: int
     value: bool
     flags: int = BinaryFlags.ONLINE
+    timestamp: Optional[int] = None  # Milliseconds since epoch (Group 11 Var 2 events)
 
     @classmethod
     def from_bytes(cls, data: bytes, index: int, variation: int = 2) -> "BinaryOutput":
