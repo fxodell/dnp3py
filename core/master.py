@@ -360,15 +360,26 @@ class DNP3Master:
             # Receive and reassemble response
             return self._receive_response(timeout)
 
-    def _receive_response(self, timeout: Optional[float] = None) -> ApplicationResponse:
+    def _receive_response(
+        self,
+        timeout: Optional[float] = None,
+        solicited: bool = True,
+    ) -> ApplicationResponse:
         """
         Receive and reassemble a complete application response.
 
         Handles multi-fragment responses by collecting all fragments
         until FIN flag is set.
 
+        While a solicited response is awaited, an unsolicited response (UNS
+        set) that arrives first is confirmed if it asks for it, passed to the
+        unsolicited callback and not returned: it is not the answer to the
+        request.
+
         Args:
             timeout: Response timeout (total time for all fragments)
+            solicited: True to wait for a solicited response, skipping
+                unsolicited ones; False to return the next response of either kind
 
         Returns:
             Complete ApplicationResponse (merged if multi-fragment)
@@ -426,8 +437,14 @@ class DNP3Master:
                         self._send_frame(confirm_frame)
 
                 # Check if this is the final fragment
-                if response.final:
+                if response.final and not (solicited and response.unsolicited):
                     break
+
+                # An unsolicited response is not the answer to the request:
+                # hand it over and keep waiting
+                if solicited and response.unsolicited:
+                    fragments.pop()
+                    self._dispatch_unsolicited(response)
 
                 # Reset transport layer for next fragment
                 self._transport.reset()
@@ -1292,6 +1309,21 @@ class DNP3Master:
             callback: Function to call when unsolicited response received
         """
         self._unsolicited_callback = callback
+
+    def _dispatch_unsolicited(self, response: ApplicationResponse) -> None:
+        """
+        Pass an unsolicited response to the unsolicited callback, if one is set.
+
+        Args:
+            response: The unsolicited response
+        """
+        self._logger.debug(f"Unsolicited response while awaiting a solicited one: {response}")
+        if self._unsolicited_callback is None:
+            return
+        try:
+            self._unsolicited_callback(response)
+        except Exception:
+            self._logger.exception("Unsolicited response callback raised")
 
     def __repr__(self) -> str:
         status = "connected" if self._connected else "disconnected"
