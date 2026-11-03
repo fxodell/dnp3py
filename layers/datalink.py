@@ -122,6 +122,9 @@ class DataLinkLayer:
     # DNP3 address limits
     MAX_VALID_ADDRESS = 65519  # 0xFFEF - addresses 65520-65535 are reserved
     BROADCAST_ADDRESS = 65535  # 0xFFFF - broadcast address
+    # Broadcast destinations: 0xFFFD (confirm required), 0xFFFE (no confirm),
+    # 0xFFFF (confirm optional)
+    BROADCAST_ADDRESSES = (0xFFFD, 0xFFFE, 0xFFFF)
 
     def __init__(self, master_address: int = 1, outstation_address: int = 10):
         """
@@ -194,7 +197,7 @@ class DataLinkLayer:
 
         if destination is None:
             destination = self.outstation_address
-        else:
+        elif destination not in self.BROADCAST_ADDRESSES:
             self._validate_address(destination, "Destination")
 
         if source is None:

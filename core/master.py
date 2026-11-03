@@ -1201,6 +1201,43 @@ class DNP3Master:
         except DNP3Error:
             return False
 
+    def send_broadcast(
+        self,
+        function: int,
+        objects: Optional[list[ObjectHeader]] = None,
+        destination: int = DataLinkLayer.BROADCAST_ADDRESS,
+    ) -> None:
+        """
+        Send a request to a broadcast address.
+
+        Outstations do not respond to a broadcast request; each sets IIN1.0
+        (broadcast) in its next response. The frames are sent as
+        UNCONFIRMED_USER_DATA, since no station acknowledges a broadcast.
+
+        Args:
+            function: Application function code (e.g. AppLayerFunction.WRITE)
+            objects: Object headers of the request
+            destination: 0xFFFD (application confirm required), 0xFFFE (no
+                confirm) or 0xFFFF (confirm optional)
+
+        Raises:
+            ValueError: If destination is not a broadcast address
+        """
+        if destination not in DataLinkLayer.BROADCAST_ADDRESSES:
+            raise ValueError(
+                f"Broadcast destination must be one of 0xFFFD, 0xFFFE, 0xFFFF, got {destination!r}"
+            )
+        apdu = self._application.build_request(function, objects)
+        with self._lock:
+            for segment in self._transport.segment(apdu):
+                frame = self._datalink.build_frame(
+                    segment,
+                    destination=destination,
+                    confirmed=False,
+                    fcv=False,
+                )
+                self._send_frame(frame)
+
     def enable_unsolicited(self, class_mask: int = 0x07) -> bool:
         """
         Enable unsolicited responses for specified classes.
