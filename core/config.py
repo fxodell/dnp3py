@@ -246,6 +246,7 @@ class DNP3Config:
     # Application layer settings
     max_apdu_size: int = 2048  # Max application layer PDU size
     enable_unsolicited: bool = True
+    clear_restart: bool = True  # Clear IIN1.7 DEVICE_RESTART when a response reports it
 
     # Class polling intervals (in seconds, 0 = disabled)
     class_0_poll_interval: float = 60.0  # Integrity poll

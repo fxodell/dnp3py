@@ -326,14 +326,20 @@ class DNP3Master:
         apdu: bytes,
         expect_response: bool = True,
         timeout: Optional[float] = None,
+        clear_restart: bool = True,
     ) -> Optional[ApplicationResponse]:
         """
         Send an application layer request and optionally wait for response.
+
+        If the response reports IIN1.7 DEVICE_RESTART and config.clear_restart
+        is set, the restart indication is cleared (see clear_restart()) before
+        the response is returned.
 
         Args:
             apdu: Application Protocol Data Unit to send
             expect_response: Whether to wait for response
             timeout: Response timeout
+            clear_restart: False to skip clearing IIN1.7 for this request
 
         Returns:
             ApplicationResponse if expect_response is True, else None
@@ -358,7 +364,12 @@ class DNP3Master:
                 return None
 
             # Receive and reassemble response
-            return self._receive_response(timeout)
+            response = self._receive_response(timeout)
+
+        if clear_restart and self.config.clear_restart and response.iin.device_restart:
+            if not self.clear_restart():
+                self._logger.warning("Could not clear IIN1.7 DEVICE_RESTART")
+        return response
 
     def _receive_response(self, timeout: Optional[float] = None) -> ApplicationResponse:
         """
@@ -1172,6 +1183,33 @@ class DNP3Master:
     # =========================================================================
     # Utility methods
     # =========================================================================
+
+    def clear_restart(self) -> bool:
+        """
+        Clear the outstation's IIN1.7 DEVICE_RESTART indication.
+
+        Writes 0 to index 7 of object group 80 variation 1 (internal
+        indications), as the master does after the outstation reports a
+        restart.
+
+        Returns:
+            True if the outstation accepted the write
+        """
+        header = ObjectHeader(
+            group=ObjectGroup.INTERNAL_INDICATIONS,
+            variation=1,
+            qualifier=QualifierCode.UINT8_START_STOP,
+            range_start=7,
+            range_stop=7,
+            data=b"\x00",
+        )
+        apdu = self._application.build_request(AppLayerFunction.WRITE, [header])
+        try:
+            response = self._send_request(apdu, clear_restart=False)
+        except DNP3Error as e:
+            self._logger.warning(f"Clearing IIN1.7 failed: {e}")
+            return False
+        return response is not None and not response.iin.has_errors()
 
     def cold_restart(self) -> bool:
         """
