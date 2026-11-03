@@ -37,6 +37,13 @@ UNS_FLAG = 0x10
 SEQ_MASK = 0x0F
 SEQ_MODULUS = 16  # Sequence numbers are 4-bit (0-15)
 
+# Size in octets of the index that precedes each object, per prefixed qualifier
+INDEX_PREFIX_SIZES = {
+    QualifierCode.UINT8_COUNT_UINT8_INDEX: 1,
+    QualifierCode.UINT8_COUNT_UINT16_INDEX: 2,
+    QualifierCode.UINT16_COUNT_UINT16_INDEX: 2,
+}
+
 
 @dataclass
 class ObjectHeader:
@@ -99,17 +106,20 @@ class ObjectHeader:
             if not isinstance(self.count, int) or not 0 <= self.count <= 0xFFFF:
                 raise DNP3ObjectError(f"UINT16 count must be 0-65535, got {self.count!r}")
             result.extend(self.count.to_bytes(2, "little"))
-        elif self.qualifier in (
-            QualifierCode.UINT8_COUNT_UINT8_INDEX,
-            QualifierCode.UINT8_COUNT_UINT16_INDEX,
-        ):
+        elif self.qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
             if not isinstance(self.count, int) or not 0 <= self.count <= 255:
                 raise DNP3ObjectError(f"UINT8 count must be 0-255, got {self.count!r}")
             result.append(self.count & 0xFF)
-        elif self.qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
+        elif self.qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
+            # 0x28: range code 8, a 2-octet count
             if not isinstance(self.count, int) or not 0 <= self.count <= 0xFFFF:
                 raise DNP3ObjectError(f"UINT16 count must be 0-65535, got {self.count!r}")
             result.extend(self.count.to_bytes(2, "little"))
+        elif self.qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
+            # 0x29: range code 9, a 4-octet count
+            if not isinstance(self.count, int) or not 0 <= self.count <= 0xFFFFFFFF:
+                raise DNP3ObjectError(f"UINT32 count must be 0-4294967295, got {self.count!r}")
+            result.extend(self.count.to_bytes(4, "little"))
         else:
             raise DNP3ObjectError(f"Unsupported qualifier code: 0x{self.qualifier:02X}")
 
@@ -186,20 +196,18 @@ class ObjectHeader:
                 raise DNP3ObjectError("Insufficient data for count")
             count = data[offset + consumed]
             consumed += 1
-        elif qualifier in (
-            QualifierCode.UINT8_COUNT_UINT16_INDEX,
-            QualifierCode.UINT16_COUNT_UINT16_INDEX,
-        ):
-            if qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
-                if len(data) - offset - consumed < 1:
-                    raise DNP3ObjectError("Insufficient data for count")
-                count = data[offset + consumed]
-                consumed += 1
-            else:
-                if len(data) - offset - consumed < 2:
-                    raise DNP3ObjectError("Insufficient data for count")
-                count = int.from_bytes(data[offset + consumed : offset + consumed + 2], "little")
-                consumed += 2
+        elif qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
+            # 0x28: range code 8, a 2-octet count
+            if len(data) - offset - consumed < 2:
+                raise DNP3ObjectError("Insufficient data for count")
+            count = int.from_bytes(data[offset + consumed : offset + consumed + 2], "little")
+            consumed += 2
+        elif qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
+            # 0x29: range code 9, a 4-octet count
+            if len(data) - offset - consumed < 4:
+                raise DNP3ObjectError("Insufficient data for count")
+            count = int.from_bytes(data[offset + consumed : offset + consumed + 4], "little")
+            consumed += 4
         else:
             raise DNP3ObjectError(f"Unsupported qualifier code: 0x{qualifier:02X}")
 
@@ -506,6 +514,15 @@ class ApplicationResponse:
         # Get object size for this group/variation
         obj_size = get_object_size(group, variation)
 
+        # With an index-prefix qualifier every object is preceded by its index
+        prefix_size = INDEX_PREFIX_SIZES.get(qualifier)
+        if prefix_size is not None:
+            if obj_size is None:
+                raise DNP3ObjectError(
+                    f"Unknown object size for indexed qualifier: group={group}, variation={variation}"
+                )
+            return count * (prefix_size + obj_size)
+
         if obj_size is not None:
             # Fixed size objects
             return obj_size * count
@@ -515,32 +532,6 @@ class ApplicationResponse:
         # Packed binary (1 bit per point)
         if group in (1, 10) and variation == 1:
             return (count + 7) // 8  # Ceiling division for bits to bytes
-
-        # For indexed qualifiers, the size includes index prefixes
-        if qualifier == QualifierCode.UINT8_COUNT_UINT8_INDEX:
-            # Each object has 1-byte index prefix
-            base_size = get_object_size(group, variation)
-            if base_size is None:
-                raise DNP3ObjectError(
-                    f"Unknown object size for indexed qualifier: group={group}, variation={variation}"
-                )
-            return count * (1 + base_size)
-        elif qualifier == QualifierCode.UINT8_COUNT_UINT16_INDEX:
-            # Each object has 2-byte index prefix
-            base_size = get_object_size(group, variation)
-            if base_size is None:
-                raise DNP3ObjectError(
-                    f"Unknown object size for indexed qualifier: group={group}, variation={variation}"
-                )
-            return count * (2 + base_size)
-        elif qualifier == QualifierCode.UINT16_COUNT_UINT16_INDEX:
-            # Each object has 2-byte index prefix
-            base_size = get_object_size(group, variation)
-            if base_size is None:
-                raise DNP3ObjectError(
-                    f"Unknown object size for indexed qualifier: group={group}, variation={variation}"
-                )
-            return count * (2 + base_size)
 
         # Unknown size - refuse to guess to avoid misaligned parsing
         raise DNP3ObjectError(

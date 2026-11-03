@@ -73,10 +73,13 @@ class QualifierCode(IntEnum):
     UINT8_COUNT = 0x07  # 8-bit single field count
     UINT16_COUNT = 0x08  # 16-bit single field count
 
-    # With object prefix
-    UINT8_COUNT_UINT8_INDEX = 0x17  # 8-bit count with 8-bit index prefix
-    UINT8_COUNT_UINT16_INDEX = 0x28  # 8-bit count with 16-bit index prefix
-    UINT16_COUNT_UINT16_INDEX = 0x29  # 16-bit count with 16-bit index prefix
+    # With object prefix. The high nibble is the index prefix size (1: 1 octet,
+    # 2: 2 octets), the low nibble the range field (7: 1-octet count,
+    # 8: 2-octet count, 9: 4-octet count). The names of 0x28 and 0x29 are kept
+    # for compatibility; their count fields are 2 and 4 octets.
+    UINT8_COUNT_UINT8_INDEX = 0x17  # 1-octet count, 1-octet index prefix
+    UINT8_COUNT_UINT16_INDEX = 0x28  # 2-octet count, 2-octet index prefix
+    UINT16_COUNT_UINT16_INDEX = 0x29  # 4-octet count, 2-octet index prefix
 
     # Variable-sized objects
     FREE_FORMAT_UINT16_COUNT = 0x5B  # Free format with 16-bit count
