@@ -231,6 +231,29 @@ class DNP3Master:
                 port=self.config.port,
             ) from e
 
+    def _send_apdu(self, apdu: bytes) -> None:
+        """
+        Segment an APDU and send each segment as a data link frame.
+
+        Every APDU the master sends, requests and application confirms alike,
+        uses the link service selected by ``config.confirm_required``:
+        CONFIRMED_USER_DATA with FCV set and the FCB toggled per frame, or
+        UNCONFIRMED_USER_DATA.
+
+        Args:
+            apdu: Application Protocol Data Unit to send
+        """
+        for segment in self._transport.segment(apdu):
+            confirmed = self.config.confirm_required
+            frame = self._datalink.build_frame(
+                segment,
+                confirmed=confirmed,
+                fcv=confirmed,
+            )
+            self._send_frame(frame)
+            if confirmed:
+                self._datalink.toggle_fcb()
+
     def _receive_frame(self, timeout: Optional[float] = None) -> DataLinkFrame:
         """
         Receive a data link frame.
@@ -339,20 +362,7 @@ class DNP3Master:
             ApplicationResponse if expect_response is True, else None
         """
         with self._lock:
-            # Segment APDU
-            segments = self._transport.segment(apdu)
-
-            # Send each segment as a data link frame
-            for segment in segments:
-                confirmed = self.config.confirm_required
-                frame = self._datalink.build_frame(
-                    segment,
-                    confirmed=confirmed,
-                    fcv=confirmed,
-                )
-                self._send_frame(frame)
-                if confirmed:
-                    self._datalink.toggle_fcb()
+            self._send_apdu(apdu)
 
             if not expect_response:
                 return None
@@ -420,10 +430,7 @@ class DNP3Master:
                         response.sequence,
                         response.unsolicited,
                     )
-                    segments = self._transport.segment(confirm)
-                    for segment in segments:
-                        confirm_frame = self._datalink.build_frame(segment)
-                        self._send_frame(confirm_frame)
+                    self._send_apdu(confirm)
 
                 # Check if this is the final fragment
                 if response.final:
