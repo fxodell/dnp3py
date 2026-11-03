@@ -320,14 +320,24 @@ class BinaryOutputCommand:
         )
 
     @classmethod
-    def trip(cls, index: int) -> "BinaryOutputCommand":
-        """Create a trip command (for breakers/switches)."""
-        return cls(index=index, control_code=ControlCode.TRIP_CLOSE_TRIP | ControlCode.LATCH_ON)
+    def trip(cls, index: int, on_time: int = 0, off_time: int = 0) -> "BinaryOutputCommand":
+        """Create a trip command (for breakers/switches): TRIP with PULSE_ON, 0x81."""
+        return cls(
+            index=index,
+            control_code=ControlCode.TRIP_CLOSE_TRIP | ControlCode.PULSE_ON,
+            on_time=on_time,
+            off_time=off_time,
+        )
 
     @classmethod
-    def close(cls, index: int) -> "BinaryOutputCommand":
-        """Create a close command (for breakers/switches)."""
-        return cls(index=index, control_code=ControlCode.TRIP_CLOSE_CLOSE | ControlCode.LATCH_ON)
+    def close(cls, index: int, on_time: int = 0, off_time: int = 0) -> "BinaryOutputCommand":
+        """Create a close command (for breakers/switches): CLOSE with PULSE_ON, 0x41."""
+        return cls(
+            index=index,
+            control_code=ControlCode.TRIP_CLOSE_CLOSE | ControlCode.PULSE_ON,
+            on_time=on_time,
+            off_time=off_time,
+        )
 
     def to_bytes(self) -> bytes:
         """Serialize to bytes (Group 12, Variation 1 format).

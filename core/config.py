@@ -97,9 +97,9 @@ class ControlCode(IntEnum):
     # Clear flag (OR with above)
     CLEAR = 0x20
 
-    # Trip/Close for switches
-    TRIP_CLOSE_TRIP = 0x40
-    TRIP_CLOSE_CLOSE = 0x80
+    # Trip-Close Code (bits 7-6): 1 = CLOSE, 2 = TRIP, 3 is reserved
+    TRIP_CLOSE_TRIP = 0x80
+    TRIP_CLOSE_CLOSE = 0x40
 
 
 class ControlStatus(IntEnum):
